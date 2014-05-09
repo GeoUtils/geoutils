@@ -12,6 +12,7 @@ from scipy import ndimage
 from osgeo import osr, gdal
 import subprocess
 import xml.etree.ElementTree as etree
+import re
 
 class __Raster:
     
@@ -79,6 +80,37 @@ class __Raster:
         x = np.array(np.linspace(trans[0],(trans[0]+(self.ds.RasterXSize*trans[1])),self.ds.RasterXSize).tolist() * self.ds.RasterYSize).reshape(self.r.shape)
         y = np.array(np.linspace(trans[3],(trans[3]+(self.ds.RasterYSize*trans[5])),self.ds.RasterYSize).tolist() * self.ds.RasterXSize).reshape(self.r.shape[::-1]).T
         return (x,y)
+
+
+    def get_utm_zone(self):
+        """ 
+        Return UTM zone of raster from GDAL Projection information. 
+
+        Returns:
+            str : zone
+
+        """
+        value = re.findall('UTM zone ([0-9]{1,2}N|S)',self.ds.GetProjection())
+        if len(value) <> 1:
+            raise 'UTM zone not found'
+        return value[0]
+
+
+    def get_pixel_size(self):
+        """ 
+        Return pixel size of loaded raster.
+
+        Returns:
+            floats: xres, yres
+
+         """
+        geotransform = self.ds.GetGeoTransform()
+        xres = geotransform[1]
+        yres = geotransform[5]
+        return xres, yres
+
+
+
 
 
 

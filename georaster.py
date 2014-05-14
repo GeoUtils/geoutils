@@ -155,7 +155,7 @@ class SingleBandRaster(__Raster):
             float of extracted pixel value.
         
         """
-        return self.value_at_coords(x,y,band=1)
+        return self.value_at_coords(x,y,band=1)['1']
              
         
     def transect(self):

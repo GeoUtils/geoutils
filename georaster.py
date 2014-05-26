@@ -33,7 +33,7 @@ class __Raster:
         return self.ds.GetRasterBand(band).ReadAsArray()  
 
 
-    def value_at_coords(self,x,y,band=None):
+    def value_at_coords(self,x,y,system='geoloc',band=None):
         """ Extract the pixel value(s) at the specified coordinates.
         
         Extract pixel value of each band in dataset at the specified 
@@ -41,15 +41,21 @@ class __Raster:
         band's pixel value.
                 
         Parameters:
-            x : x coordinate in format of target dataset.
-            y : y coordinate in format of target dataset.
+            x : float, x coordinate.
+            y : float, y coordinate.
+            system : str, 'geoloc' if coordinates in system of target dataset
+                or 'wgs84' if coordinates in lat/lon.
             band : the band number to extract from.
         Returns:
             if band specified, float of extracted pixel value.
             if band not specified, dict of band number:float pixel value.
         
         """
-        cmd = "gdallocationinfo " + self.ds_file + " -xml -geoloc " + str(x) + " " + str(y)  
+        if system <> 'geoloc' and system <> 'wgs84':
+            raise ValueError('Specified coordinate system not understood.')
+
+        cmd = "gdallocationinfo " + self.ds_file + " -xml -" + system + \
+            " " + str(x) + " " + str(y)  
         pid = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE)
         stdout,stderr = pid.communicate()
@@ -145,7 +151,7 @@ class SingleBandRaster(__Raster):
 
     
         
-    def find_value_at_coords(self,x,y):
+    def find_value_at_coords(self,x,y,**kwargs):
         """ Extract the pixel value at the specified coordinates.
         
         Parameters:
@@ -155,7 +161,7 @@ class SingleBandRaster(__Raster):
             float of extracted pixel value.
         
         """
-        return self.value_at_coords(x,y,band=1)['1']
+        return self.value_at_coords(x,y,band=1,**kwargs)['1']
              
         
     def transect(self):
@@ -243,6 +249,67 @@ def write_geotiff(raster,output_file,geo,proj4=False,wkt=False,mask=None):
     # Close data set
     dst_ds = None
     return True 
-        
+
+def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None):
+    """ Save a GeoTIFF.
+    
+    Inputs:
+        outfile : filename to save image to
+        raster : nbands x r x c
+        geoTransform : tuple (top left x, w-e cell size, 0, top left y, 0, n-s cell size (-ve))
+        One of proj4 or wkt :
+            proj4 : a proj4 string
+            wkt : a WKT projection string
+
+    Outputs:
+        A GeoTiff named outfile.
+    
+    Based on http://adventuresindevelopment.blogspot.com/2008/12/python-gdal-adding-geotiff-meta-data.html
+    and http://www.gdal.org/gdal_tutorial.html
+    """
+
+    # Georeferencing sanity checks
+    if wkt <> None and proj4 <> None:
+        raise 'InputError: Both wkt and proj4 specified. Only specify one.'
+    if wkt == None and proj4 == None:
+        raise 'InputError: One of wkt or proj4 need to be specified.'
+
+    # Check if the image is multi-band or not. 
+    if raster.shape.__len__() == 3:
+        nbands = raster.shape[0]    
+        ydim = raster.shape[1]
+        xdim = raster.shape[2]
+    elif raster.shape.__len__() == 2:
+        nbands = 1
+        ydim = raster.shape[0]
+        xdim = raster.shape[1]
+         
+    # Setup geotiff file.
+    driver = gdal.GetDriverByName("GTiff")
+    dst_ds = driver.Create(outfile, xdim, ydim, nbands, gdal.GDT_Float32)
+    # Top left x, w-e pixel resolution, rotation, top left y, rotation, n-s pixel resolution
+    dst_ds.SetGeoTransform(geoTransform)
+      
+    # Set the reference info 
+    srs = osr.SpatialReference()
+    if wkt <> None:
+        dst_ds.SetProjection(wkt)
+    elif proj4 <> None:
+        srs.ImportFromProj4(proj4)
+        dst_ds.SetProjection( srs.ExportToWkt() )
+    
+    # Write the band(s)
+    if nbands > 1:
+        for band in range(1,nbands+1):
+            dst_ds.GetRasterBand(band).WriteArray(raster[band-1]) 
+    else:
+        dst_ds.GetRasterBand(1).WriteArray(raster)
+
+    # Close data set
+    dst_ds = None
+    return True 
+
+
+
         
         

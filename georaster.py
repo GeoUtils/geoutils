@@ -2,6 +2,59 @@
 """
 georaster.py
 
+Classes to simplify reading geographic raster data and associated 
+georeferencing information.
+
+There are two classes available:
+
+    SingleBandRaster    --  For loading datasets with only a single band of 
+                            data
+    MultiBandRaster     --  For loading datasets that contain multiple bands 
+                            of data
+
+    !!! NOTE - MultiBandRaster is still under development and does not yet work.
+
+Each class works as a wrapper to the GDAL API. A raster dataset can be loaded
+into a class without needing to load the actual data as well, which is useful
+for querying geo-referencing information without memory overheads.
+
+Both classes provide comprehensive georeferencing information access via
+the following attributes:
+
+    class.ds    :   the GDAL handle to the dataset, which provides access to 
+                    all GDAL functions, e.g. GetProjection, GetGeoTransform.
+                        More information on API:
+                        http://www.gdal.org/classGDALDataset.html
+
+
+    class.srs   :   an OGR Spatial Reference object representation of the 
+                    dataset.
+                        More information on API:
+                        http://www.gdal.org/classOGRSpatialReference.html
+
+    class.proj  :   a pyproj coordinate conversion function between the 
+                    dataset coordinate system and lat/lon.
+
+    class.extent :  tuple of the corners of the dataset in native coordinate
+                    system, as (xll,xur,yll,yur).                    
+
+Additionally, georeferencing information which requires calculation 
+can be accessed via a number of functions available in the class.
+
+Example use for SingleBandRaster with data import:
+>>> import georaster
+>>> my_image = georaster.SingleBandRaster('myfile.tif')
+>>> plt.imshow(my_image.r,extent=my_image.extent)
+The data of a SingleBandRaster is made available via my_image.r as a numpy
+array.
+
+Example use for SingleBandRaster to get some georeferencing info, without 
+also loading data into memory:
+>>> import georaster
+>>> my_image = georaster.SingleBandRaster('myfile.tif',load_data=False)
+>>> print my_image.srs.GetProjParm('central_meridian')
+
+
 Created on Wed Oct 23 12:06:16 2013
 
 @author: Andrew Tedstone (a.j.tedstone@ed.ac.uk)
@@ -13,24 +66,67 @@ from osgeo import osr, gdal
 import subprocess
 import xml.etree.ElementTree as etree
 import re
+import mpl_toolkits.basemap.pyproj as pyproj
+
+# By default, GDAL does not raise exceptions - enable them
+# See http://trac.osgeo.org/gdal/wiki/PythonGotchas
+gdal.UseExceptions()
 
 class __Raster:
-    
+    """
+
+    Attributes:
+        ds_file : filepath and name
+        ds : GDAL handle to dataset
+        extent : extent of raster in order understood by basemap, 
+                    [xll,xur,yll,yur], in raster coordinates
+        srs : OSR SpatialReference object
+        proj : pyproj conversion object raster coordinates<->lat/lon 
+
+    """      
     # Filepath and name
     ds_file = None
     # GDAL handle to the dataset
     ds = None
     # Extent of raster in order understood by Basemap
     extent = None
-    
+    # SRS
+    srs = None
+    # pyproj Projection
+    proj = None
+  
+
+
     def __del__(self):
         """ Close the gdal link to the dataset on object destruction """
         self.ds = None
 
 
+
+    def _load_ds(self,ds_filename):
+        """ Load link to data file and set up georeferencing """
+        self.ds_file = ds_filename
+        self.ds = gdal.Open(ds_filename)
+        trans = self.ds.GetGeoTransform()
+        self.extent = (trans[0], trans[0] + self.ds.RasterXSize*trans[1], trans[3] + self.ds.RasterYSize*trans[5], trans[3])
+        self.srs = osr.SpatialReference()
+        self.srs.ImportFromWkt(self.ds.GetProjection())
+        self.proj = pyproj.Proj(self.srs.ExportToProj4())
+
+
+ 
+    def get_extent_latlon(self):
+        """ Return raster extent in lat/lon, (xll,xur,yll,yur) """
+        xll,yll = self.proj(self.extent[0],self.extent[2],inverse=True)
+        xur,yur = self.proj(self.extent[1],self.extent[3],inverse=True)
+        return (xll,xur,yll,yur)
+
+
+
     def read_single_band(self,band):
         """ Return np array of specified band. """
         return self.ds.GetRasterBand(band).ReadAsArray()  
+
 
 
     def value_at_coords(self,x,y,system='geoloc',band=None):
@@ -73,6 +169,7 @@ class __Raster:
         return vals
 
     
+
     def coordinates(self):
         """ Calculate x and y coordinates for every pixel. 
 
@@ -88,18 +185,21 @@ class __Raster:
         return (x,y)
 
 
+
     def get_utm_zone(self):
         """ 
         Return UTM zone of raster from GDAL Projection information. 
+
+        This function used to be more complex but is now a wrapper to an OGR
+        Spatial Reference call. It remains maintained for backwards 
+        compatibility with dependent scripts.
 
         Returns:
             str : zone
 
         """
-        value = re.findall('UTM zone ([0-9]{1,2}N|S)',self.ds.GetProjection())
-        if len(value) <> 1:
-            raise 'UTM zone not found'
-        return value[0]
+        return self.srs.GetUtmZone()
+        
 
 
     def get_pixel_size(self):
@@ -137,14 +237,9 @@ class SingleBandRaster(__Raster):
         Parameters:
             ds_filename : filename of the dataset to import
             load_data : boolean, default True, to import the data into obj.r.
-        Returns:
-            Sets self.ds, self.extent, self.r.
             
         """
-        self.ds_file = ds_filename
-        self.ds = gdal.Open(ds_filename)
-        trans = self.ds.GetGeoTransform()
-        self.extent = (trans[0], trans[0] + self.ds.RasterXSize*trans[1], trans[3] + self.ds.RasterYSize*trans[5], trans[3])
+        self._load_ds(ds_filename)     
         
         if load_data == True:
             self.r = self.read_single_band(1)
@@ -162,13 +257,9 @@ class SingleBandRaster(__Raster):
         
         """
         return self.value_at_coords(x,y,band=1,**kwargs)['1']
-             
-        
-    def transect(self):
-        """ Not yet started.
-        
-        """
-        
+                
+
+
     def smooth(self,px=3):
         """ Apply gaussian filter of specified window px.
         
@@ -182,73 +273,38 @@ class SingleBandRaster(__Raster):
         
 
 
+
 class MultiBandRaster(__Raster):
-    """ Placeholder """
+    """ THIS CLASS IS NOT YET READY FOR PRODUCTION """
+
+    # Numpy multi-dimensional array of data
+    r = None
+
+    def __init__(self,ds_filename,load_data=True):
+        """ Load a multi-band raster.
+
+        Parameters:
+            ds_filename : filename of dataset to load
+            load_data : True, False, or tuple of raster bands
+
+        """
+        self._load_ds(ds_filename)
+
+        if load_data == True:
+            print 'true'
+        elif load_data == False:
+            return
+        elif isinstance(load_data,(tuple,list)) == True:
+            for b in load_data:
+                print 'load'
+        else:
+            raise ValueError('load_data was not understood (should be one \
+             of True,False or tuple)')
 
 
 
-def write_geotiff(raster,output_file,geo,proj4=False,wkt=False,mask=None):
-    """ Save a GeoTIFF.
-    
-    Inputs:
-        raster - nbands x r x c
-        output_file - filename to save image to
-        geo - georeferencing information as dictionary. x (left coord), 
-        y (top coord), xcellsize, ycellsize, datum, utmzone (if raster is projected in UTM)
-        proj4 - a proj4 string, optional
-        wkt - a WKT projection string, optional
-        Only provide one of proj4 or wkt!
 
-    Outputs:
-        A GeoTiff named according to output_file.
-    
-    Based on http://adventuresindevelopment.blogspot.com/2008/12/python-gdal-adding-geotiff-meta-data.html
-    and http://www.gdal.org/gdal_tutorial.html
-    """   
-    # Check if the image is multi-band or not. 
-    if raster.shape.__len__() == 3:
-        nbands = raster.shape[0]    
-        ydim = raster.shape[1]
-        xdim = raster.shape[2]
-    elif raster.shape.__len__() == 2:
-        nbands = 1
-        ydim = raster.shape[0]
-        xdim = raster.shape[1]
-         
-    # Setup geotiff file.
-    gdal.SetConfigOption('GDAL_TIFF_INTERNAL_MASK', 'YES')
-    driver = gdal.GetDriverByName("GTiff")
-    dst_ds = driver.Create(output_file, xdim, ydim, nbands, gdal.GDT_Float32)
-    dst_ds.CreateMaskBand(gdal.GMF_PER_DATASET)
-    # Top left x, w-e pixel resolution, rotation, top left y, rotation, n-s pixel resolution
-    dst_ds.SetGeoTransform( [ geo['x'], geo['xcellsize'], 0, geo['y'], 0, geo['ycellsize'] ] )
-      
-    # Set the reference info 
-    srs = osr.SpatialReference()
-    if wkt == False:
-        srs.ImportFromProj4(proj4)
 
-        if geo.has_key('utmzone') == True:
-            srs.SetUTM(geo['utmzone'],1)
-        srs.SetWellKnownGeogCS(geo['datum'])
-        dst_ds.SetProjection( srs.ExportToWkt() )
-    else:
-        dst_ds.SetProjection(wkt)
-    
-    # Write the band(s)
-    if nbands > 1:
-        for band in range(1,nbands+1):
-            dst_ds.GetRasterBand(band).WriteArray(raster[band-1]) 
-            if mask <> None:
-                dst_ds.GetRasterBand(band).GetMaskBand().WriteArray(mask)
-    else:
-        dst_ds.GetRasterBand(1).WriteArray(raster)
-        if mask <> None:
-            dst_ds.GetRasterBand(1).GetMaskBand().WriteArray(mask)
-
-    # Close data set
-    dst_ds = None
-    return True 
 
 def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None):
     """ Save a GeoTIFF.
@@ -309,6 +365,74 @@ def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None):
     dst_ds = None
     return True 
 
+
+
+
+
+
+
+def write_geotiff(raster,output_file,geo,proj4=False,wkt=False,mask=None):
+    """ Save a GeoTIFF. DEPRECATED - DO NOT USE FOR NEW APPLICATIONS
+    
+    Inputs:
+        raster - nbands x r x c
+        output_file - filename to save image to
+        geo - georeferencing information as dictionary. x (left coord), 
+        y (top coord), xcellsize, ycellsize, datum, utmzone (if raster is projected in UTM)
+        proj4 - a proj4 string, optional
+        wkt - a WKT projection string, optional
+        Only provide one of proj4 or wkt!
+
+    Outputs:
+        A GeoTiff named according to output_file.
+    
+    Based on http://adventuresindevelopment.blogspot.com/2008/12/python-gdal-adding-geotiff-meta-data.html
+    and http://www.gdal.org/gdal_tutorial.html
+    """   
+    # Check if the image is multi-band or not. 
+    if raster.shape.__len__() == 3:
+        nbands = raster.shape[0]    
+        ydim = raster.shape[1]
+        xdim = raster.shape[2]
+    elif raster.shape.__len__() == 2:
+        nbands = 1
+        ydim = raster.shape[0]
+        xdim = raster.shape[1]
+         
+    # Setup geotiff file.
+    gdal.SetConfigOption('GDAL_TIFF_INTERNAL_MASK', 'YES')
+    driver = gdal.GetDriverByName("GTiff")
+    dst_ds = driver.Create(output_file, xdim, ydim, nbands, gdal.GDT_Float32)
+    dst_ds.CreateMaskBand(gdal.GMF_PER_DATASET)
+    # Top left x, w-e pixel resolution, rotation, top left y, rotation, n-s pixel resolution
+    dst_ds.SetGeoTransform( [ geo['x'], geo['xcellsize'], 0, geo['y'], 0, geo['ycellsize'] ] )
+      
+    # Set the reference info 
+    srs = osr.SpatialReference()
+    if wkt == False:
+        srs.ImportFromProj4(proj4)
+
+        if geo.has_key('utmzone') == True:
+            srs.SetUTM(geo['utmzone'],1)
+        srs.SetWellKnownGeogCS(geo['datum'])
+        dst_ds.SetProjection( srs.ExportToWkt() )
+    else:
+        dst_ds.SetProjection(wkt)
+    
+    # Write the band(s)
+    if nbands > 1:
+        for band in range(1,nbands+1):
+            dst_ds.GetRasterBand(band).WriteArray(raster[band-1]) 
+            if mask <> None:
+                dst_ds.GetRasterBand(band).GetMaskBand().WriteArray(mask)
+    else:
+        dst_ds.GetRasterBand(1).WriteArray(raster)
+        if mask <> None:
+            dst_ds.GetRasterBand(1).GetMaskBand().WriteArray(mask)
+
+    # Close data set
+    dst_ds = None
+    return True 
 
 
         

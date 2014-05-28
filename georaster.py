@@ -123,9 +123,55 @@ class __Raster:
 
 
 
-    def read_single_band(self,band):
-        """ Return np array of specified band. """
+    def read_single_band(self,band=1):
+        """ Return np array of specified band, defaults to band 1. """
         return self.ds.GetRasterBand(band).ReadAsArray()  
+
+
+
+    def read_single_band_subset(self,bounds,latlon=False,band=1):
+        """ Return a subset area of the specified band of the dataset.
+
+        Supply coordinates in native system or lat/lon.
+
+        Parameters:
+            bounds : tuple (xstart,xend,ystart,yend) (same format as extent)
+            latlon : boolean, default False. Set as True if bounds in lat/lon.
+            band : int, number of band to read. Default 1.
+
+        Returns:
+            np.array of subset area
+
+        Map --> px conversion from:
+        http://gis.stackexchange.com/a/46898
+
+        """
+        
+        xstart,xend,ystart,yend = bounds
+
+        # Convert coordinates to map system if provided in lat/lon
+        if latlon == True:
+            xstart,ystart = self.proj(xstart,ystart)
+            xend,yend = self.proj(xend,yend)
+
+        # Start conversion to pixel coordinate space
+        trans = self.ds.GetGeoTransform()
+        # Coordinates of start point in pixel coordinates
+        xpx1 = int((xstart - trans[0]) / trans[1])
+        ypx1 = int((ystart - trans[3]) / trans[5]) 
+        # Coordinates of finish point in pixel coordinates
+        xpx2 = int((xend - trans[0]) / trans[1])
+        ypx2 = int((yend - trans[3]) / trans[5])
+        # Resulting pixel offsets
+        x_offset = xpx2 - xpx1
+        y_offset = ypx2 - ypx1
+
+        # Read array and return
+        arr = self.ds.GetRasterBand(band).ReadAsArray(xpx1,ypx1,
+                                                      x_offset,y_offset)
+        return arr
+
+
 
 
 
@@ -214,6 +260,7 @@ class __Raster:
         xres = geotransform[1]
         yres = geotransform[5]
         return xres, yres
+
 
 
 

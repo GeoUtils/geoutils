@@ -36,7 +36,7 @@ the following attributes:
                     dataset coordinate system and lat/lon.
 
     class.extent :  tuple of the corners of the dataset in native coordinate
-                    system, as (xll,xur,yll,yur).                    
+                    system, as (left,right,bottom,top).
 
 Additionally, georeferencing information which requires calculation 
 can be accessed via a number of functions available in the class.
@@ -117,9 +117,9 @@ class __Raster:
  
     def get_extent_latlon(self):
         """ Return raster extent in lat/lon, (xll,xur,yll,yur) """
-        xll,yll = self.proj(self.extent[0],self.extent[2],inverse=True)
-        xur,yur = self.proj(self.extent[1],self.extent[3],inverse=True)
-        return (xll,xur,yll,yur)
+        left,bottom = self.proj(self.extent[0],self.extent[2],inverse=True)
+        right,top = self.proj(self.extent[1],self.extent[3],inverse=True)
+        return (left,right,bottom,top)
 
 
 
@@ -147,21 +147,24 @@ class __Raster:
 
         """
         
-        xstart,xend,ystart,yend = bounds
+        left,right,bottom,top = bounds
 
         # Convert coordinates to map system if provided in lat/lon
         if latlon == True:
-            xstart,ystart = self.proj(xstart,ystart)
-            xend,yend = self.proj(xend,yend)
+            left,bottom = self.proj(left,bottom)
+            right,top = self.proj(right,top)
 
-        # Start conversion to pixel coordinate space
+        # Start conversion to pixel coordinate space.
+        # Unlike the bounds tuple, which specifies bottom left and top right
+        # coordinates, here we need top left and bottom right for the numpy
+        # readAsArray implementation.
         trans = self.ds.GetGeoTransform()
         # Coordinates of start point in pixel coordinates
-        xpx1 = int((xstart - trans[0]) / trans[1])
-        ypx1 = int((ystart - trans[3]) / trans[5]) 
+        xpx1 = int((left - trans[0]) / trans[1])
+        ypx1 = int((top - trans[3]) / trans[5]) 
         # Coordinates of finish point in pixel coordinates
-        xpx2 = int((xend - trans[0]) / trans[1])
-        ypx2 = int((yend - trans[3]) / trans[5])
+        xpx2 = int((right - trans[0]) / trans[1])
+        ypx2 = int((bottom - trans[3]) / trans[5])
         # Resulting pixel offsets
         x_offset = xpx2 - xpx1
         y_offset = ypx2 - ypx1

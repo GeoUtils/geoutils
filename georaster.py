@@ -247,7 +247,7 @@ class __Raster:
             str : zone
 
         """
-        return self.srs.GetUtmZone()
+        return self.srs.GetUTMZone()
         
 
 

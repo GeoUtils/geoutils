@@ -12,8 +12,6 @@ There are two classes available:
     MultiBandRaster     --  For loading datasets that contain multiple bands 
                             of data
 
-    !!! NOTE - MultiBandRaster is still under development and does not yet work.
-
 Each class works as a wrapper to the GDAL API. A raster dataset can be loaded
 into a class without needing to load the actual data as well, which is useful
 for querying geo-referencing information without memory overheads.
@@ -54,6 +52,18 @@ also loading data into memory:
 >>> my_image = georaster.SingleBandRaster('myfile.tif',load_data=False)
 >>> print my_image.srs.GetProjParm('central_meridian')
 
+Example use for MultiBandRaster, loading all bands:
+>>> import georaster
+>>> my_image = georaster.MultiBandRaster('myfile.tif')
+>>> plt.imshow(my_image.r)
+
+Example use for MultiBandRaster, loading just a couple of bands:
+>>> import georaster
+>>> my_image = georaster.MultiBandRaster('myfile.tif',load_data=[1,3])
+>>> plt.imshow(my_image.r[:,:,my_image.gdal_band(3)])
+
+For more examples see the the class itself.
+
 
 Created on Wed Oct 23 12:06:16 2013
 
@@ -74,7 +84,6 @@ gdal.UseExceptions()
 
 class __Raster:
     """
-
     Attributes:
         ds_file : filepath and name
         ds : GDAL handle to dataset
@@ -168,6 +177,9 @@ class __Raster:
         # Resulting pixel offsets
         x_offset = xpx2 - xpx1
         y_offset = ypx2 - ypx1
+        # In special case of being called to read a single point, offset 1 px
+        if x_offset == 0: x_offset = 1
+        if y_offset == 0: y_offset = 1
 
         # Read array and return
         arr = self.ds.GetRasterBand(band).ReadAsArray(xpx1,ypx1,
@@ -176,9 +188,7 @@ class __Raster:
 
 
 
-
-
-    def value_at_coords(self,x,y,system='geoloc',band=None):
+    def value_at_coords(self,x,y,latlon=False,band=None,system=None):
         """ Extract the pixel value(s) at the specified coordinates.
         
         Extract pixel value of each band in dataset at the specified 
@@ -188,34 +198,58 @@ class __Raster:
         Parameters:
             x : float, x coordinate.
             y : float, y coordinate.
-            system : str, 'geoloc' if coordinates in system of target dataset
-                or 'wgs84' if coordinates in lat/lon.
+            latlon : boolean, True if coordinates in WGS84, false if in 
+                     native system of the raster.
             band : the band number to extract from.
+            system : DEPRECATED but maintained for backward compatibility.
+
         Returns:
             if band specified, float of extracted pixel value.
-            if band not specified, dict of band number:float pixel value.
+
+            if band not specified, depending on number of bands in dataset:
+                more than 1 band : dict of GDAL band number:float pixel value.
+                just 1 band : float of extracted pixel value.
         
         """
-        if system <> 'geoloc' and system <> 'wgs84':
-            raise ValueError('Specified coordinate system not understood.')
 
-        cmd = "gdallocationinfo " + self.ds_file + " -xml -" + system + \
-            " " + str(x) + " " + str(y)  
-        pid = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE)
-        stdout,stderr = pid.communicate()
-        xmlr = etree.fromstring(stdout) 
-        
-        vals = {}
-        for r in xmlr.findall('BandReport'):
-            b = r.attrib['band']
-            v = float(r.find('Value').text)
-            if b == band:
-                return v
-            else:
-                vals[b] = v
+        # Check the deprecated georeferencing system parameter.
+        if system == 'wgs84':
+            latlon = True
+
+        # Create instance of bounds to read; read_single_band_subset will
+        # increment these by 1px after completing the necessary georeferencing
+        # operations.
+        bounds = [x,x,y,y]
+
+        # N.b. Values are returned in array from read_single_band_subset so we 
+        # index in to retrieve the single coordinate value.
+
+        # Get values for all bands
+        if band == None:
+
+            # Deal with SingleBandRaster case
+            if len(self.ds.RasterCount) == 1:
+                value = self.read_single_band_subset(bounds,latlon=latlon,
+                                                     band=band)[0,0]
             
-        return vals
+            # Deal with MultiBandRaster case
+            else:    
+                value = {}
+                for b in range(1,self.ds.RasterCount+1):
+                    val = self.read_single_band_subset(bounds,latlon=latlon,
+                                                         band=b)[0,0]
+                    # Store according to GDAL band numbers
+                    value[b] = val
+
+        # Or just for specified band in MultiBandRaster case                
+        elif isinstance(band,int):
+            value = self.read_single_band_subset(bounds,latlon=latlon,
+                                                     band=band)[0,0]
+
+        else:
+            raise ValueError('The value provided for band was not int or None.')
+
+        return value
 
     
 
@@ -229,8 +263,12 @@ class __Raster:
             
         """
         trans = self.ds.GetGeoTransform()
-        x = np.array(np.linspace(trans[0],(trans[0]+(self.ds.RasterXSize*trans[1])),self.ds.RasterXSize).tolist() * self.ds.RasterYSize).reshape(self.r.shape)
-        y = np.array(np.linspace(trans[3],(trans[3]+(self.ds.RasterYSize*trans[5])),self.ds.RasterYSize).tolist() * self.ds.RasterXSize).reshape(self.r.shape[::-1]).T
+        if self.ds.RasterCount > 1:
+            shape = self.r.shape[0:2]
+        else:
+            shape = self.r.shape
+        x = np.array(np.linspace(trans[0],(trans[0]+(self.ds.RasterXSize*trans[1])),self.ds.RasterXSize).tolist() * self.ds.RasterYSize).reshape(shape)
+        y = np.array(np.linspace(trans[3],(trans[3]+(self.ds.RasterYSize*trans[5])),self.ds.RasterYSize).tolist() * self.ds.RasterXSize).reshape(shape[::-1]).T
         return (x,y)
 
 
@@ -275,7 +313,19 @@ class SingleBandRaster(__Raster):
     
     Initialise with the file path to a single band raster dataset, of type
     understood by the GDAL library. Datasets in UTM are preferred.
-    
+
+    Attributes:
+        ds_file : filepath and name
+        ds : GDAL handle to dataset
+        extent : extent of raster in order understood by basemap, 
+                    [xll,xur,yll,yur], in raster coordinates
+        srs : OSR SpatialReference object
+        proj : pyproj conversion object raster coordinates<->lat/lon 
+        r : numpy band of array data
+
+    Example:
+    >>> georaster.SingleBandRaster('myfile.tif',load_data=True|False)
+
     """
      
     # Numpy array of band data
@@ -297,8 +347,13 @@ class SingleBandRaster(__Raster):
     
         
     def find_value_at_coords(self,x,y,**kwargs):
-        """ Extract the pixel value at the specified coordinates.
+        """ (DEPRECATED) Extract the pixel value at the specified coordinates.
         
+        This function is maintained for backward compatibility. New code 
+        should call self.value_at_coords() instead.
+
+        ----------------------------------------------------------------------
+
         Parameters:
             x : x coordinate in format of target dataset.
             y : y coordinate in format of target dataset.
@@ -306,7 +361,7 @@ class SingleBandRaster(__Raster):
             float of extracted pixel value.
         
         """
-        return self.value_at_coords(x,y,band=1,**kwargs)['1']
+        return self.value_at_coords(x,y,**kwargs)
                 
 
 
@@ -325,31 +380,129 @@ class SingleBandRaster(__Raster):
 
 
 class MultiBandRaster(__Raster):
-    """ THIS CLASS IS NOT YET READY FOR PRODUCTION """
+    """ A geographic raster dataset with multiple bands of data.
+    
+    Initialise with the file path to a single band raster dataset, of type
+    understood by the GDAL library. Datasets in UTM are preferred.
 
-    # Numpy multi-dimensional array of data
+    Examples:
+    [1] Load all bands of a raster:
+    >>> georaster.MultiBandRaster("myfile.tif")
+
+    [2] Load just bands 1 and 3 of a raster:
+    >>> georaster.MultiBandRaster("myfile.tif",load_data=[1,3])
+
+    [3] Don't load the data, just use the class for the georeferencing API:
+    >>> georaster.MultiBandRaster("myfile.tif",load_data=False) 
+
+    Attributes:
+        r :         The raster data (if loaded). For the example cases above:
+
+                    [1] - a np array of [rows,cols,bands]. Standard numpy 
+                          slicing is used, ie. the array is zero-referenced.
+                          E.g., extract band 2, which is the second band 
+                          loaded:
+                          >>> myRaster.r[:,:,1]
+
+                          This can be simplified with gdal_band():
+                          E.g., extract band 2:
+                          >>> myRaster.r[:,:,myRaster.gdal_band(2)]
+
+                    [2] - The same as [1]. The helper function is particularly 
+                          useful in simplifying lookup of bands, e.g.:
+                          >>> myRaster.r[:,:,myRaster.gdal_band(3)]
+                          Rather than the less obvious:
+                          >>> myRaster.r[:,:,1]
+                          Which corresponds to the actual numpy location of 
+                          that band.
+
+                    [3] - r is set as None. No data can be accessed.
+
+
+        bands :     list of GDAL band numbers which have been loaded, in the 
+                    order corresponding to the order stored in 
+                    r[rows,cols,bands].  
+
+        ds_file :   filepath and name
+        ds :        GDAL handle to dataset
+        extent :    extent of raster in order understood by basemap, 
+                    [xll,xur,yll,yur], in raster coordinates
+        srs :       OSR SpatialReference object
+        proj :      pyproj conversion object raster coordinates<->lat/lon 
+        
+    """
+
+    # Either a numpy array if just one band, or a dict of numpy arrays if 
+    # multiple, key is band number
     r = None
+
+    # List of GDAL band numbers which have been loaded.
+    bands = None
+
 
     def __init__(self,ds_filename,load_data=True):
         """ Load a multi-band raster.
 
         Parameters:
             ds_filename : filename of dataset to load
-            load_data : True, False, or tuple of raster bands
+            load_data : True, False, or tuple of raster bands. If tuple,
+                MultiBandRaster.r will be a numpy array [y,x,b], where bands
+                are indexed from 0 to n in the order specified in the tuple.
 
         """
         self._load_ds(ds_filename)
 
         if load_data == True:
-            print 'true'
+            self.r = np.zeros((self.ds.RasterYSize,self.ds.RasterXSize,
+                               self.ds.RasterCount))
+            for b in range(0,self.ds.RasterCount):
+                self.r[:,:,b] = self.read_single_band(band=b+1)
+            self.bands = range(1,self.ds.RasterCount+1)
+
         elif load_data == False:
+            bands = None
             return
+
         elif isinstance(load_data,(tuple,list)) == True:
+            self.r = np.zeros((self.ds.RasterYSize,self.ds.RasterXSize,
+                               len(load_data)))
+            k = 0
             for b in load_data:
-                print 'load'
+                self.r[:,:,k] = self.read_single_band(band=b)
+                k += 1
+            self.bands = load_data
+
         else:
             raise ValueError('load_data was not understood (should be one \
              of True,False or tuple)')
+
+
+
+    def gdal_band(b):
+        """ Return numpy array location index for given GDAL band number. 
+
+        Parameters:
+            b : int, value of GDAL band number to lookup
+
+        Returns:
+            int, index location of band in self.r
+
+        Example:
+        >>> giveMeMyBand2 = myRaster.r[:,:,myRaster.gdal_band(2)]
+
+        """
+
+        # Check that more than 1 band has been loaded into memory.
+        if self.bands == None:
+            raise AttributeError('No data have been loaded.')
+        if len(self.bands) == 1:
+            raise AttributeError('Only 1 band of data has been loaded.')
+
+        if isinstance(b,int):
+            return self.bands.index(b)
+        else:
+            raise ValueError('B is must be an integer.') 
+
 
 
 

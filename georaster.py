@@ -212,6 +212,14 @@ class __Raster:
         
         """
 
+        def format_value(value):
+            """ Check if valid value has been extracted """
+            if type(value) == np.ndarray:
+                value = value[0,0]
+            else:
+                value = None
+            return value
+
         # Check the deprecated georeferencing system parameter.
         if system == 'wgs84':
             latlon = True
@@ -229,22 +237,22 @@ class __Raster:
 
             # Deal with SingleBandRaster case
             if self.ds.RasterCount == 1:
-                value = self.read_single_band_subset(bounds,latlon=latlon)[0,0]
+                value = format_value(self.read_single_band_subset(bounds,
+                                                            latlon=latlon))
             
             # Deal with MultiBandRaster case
             else:    
                 value = {}
                 for b in range(1,self.ds.RasterCount+1):
-                    val = self.read_single_band_subset(bounds,latlon=latlon,
-                                                         band=b)[0,0]
+                    val = format_value(self.read_single_band_subset(bounds,
+                                                    latlon=latlon,band=b))
                     # Store according to GDAL band numbers
                     value[b] = val
 
         # Or just for specified band in MultiBandRaster case                
         elif isinstance(band,int):
-            value = self.read_single_band_subset(bounds,latlon=latlon,
-                                                     band=band)[0,0]
-
+            value = format_value(self.read_single_band_subset(bounds,
+                                                    latlon=latlon,band=band))
         else:
             raise ValueError('The value provided for band was not int or None.')
 

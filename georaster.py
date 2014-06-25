@@ -228,7 +228,7 @@ class __Raster:
         if band == None:
 
             # Deal with SingleBandRaster case
-            if len(self.ds.RasterCount) == 1:
+            if self.ds.RasterCount == 1:
                 value = self.read_single_band_subset(bounds,latlon=latlon,
                                                      band=band)[0,0]
             

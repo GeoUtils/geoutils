@@ -161,6 +161,38 @@ class __Raster:
 
 
 
+    def coord_to_px(self,x,y,latlon=False):
+        """ Convert x,y coordinates into pixel coordinates of raster.
+
+        x,y may be either in native coordinate system of raster or lat/lon.
+
+        Parameters:
+            x : float, x coordinate to convert.
+            y : float, y coordinate to convert.
+            latlon : boolean, default False. Set as True if bounds in lat/lon.
+
+        Returns:
+            (x_pixel,y_pixel)
+
+
+        Map --> px conversion from:
+        http://gis.stackexchange.com/a/46898
+
+        """
+
+        # Convert coordinates to map system if provided in lat/lon
+        if latlon == True:
+            x,y = self.proj(x,y)
+
+        trans = self.ds.GetGeoTransform()
+        # Coordinates in pixel coordinates
+        xpx = int((x - trans[0]) / trans[1])
+        ypx = int((y - trans[3]) / trans[5]) 
+
+        return(xpx,ypx)
+
+
+
     def read_single_band(self,band=1):
         """ Return np array of specified band, defaults to band 1. """
         return self.ds.GetRasterBand(band).ReadAsArray()  
@@ -180,29 +212,16 @@ class __Raster:
         Returns:
             np.array of subset area
 
-        Map --> px conversion from:
-        http://gis.stackexchange.com/a/46898
-
         """
         
         left,right,bottom,top = bounds
 
-        # Convert coordinates to map system if provided in lat/lon
-        if latlon == True:
-            left,bottom = self.proj(left,bottom)
-            right,top = self.proj(right,top)
-
-        # Start conversion to pixel coordinate space.
         # Unlike the bounds tuple, which specifies bottom left and top right
         # coordinates, here we need top left and bottom right for the numpy
         # readAsArray implementation.
-        trans = self.ds.GetGeoTransform()
-        # Coordinates of start point in pixel coordinates
-        xpx1 = int((left - trans[0]) / trans[1])
-        ypx1 = int((top - trans[3]) / trans[5]) 
-        # Coordinates of finish point in pixel coordinates
-        xpx2 = int((right - trans[0]) / trans[1])
-        ypx2 = int((bottom - trans[3]) / trans[5])
+        xpx1,ypx1 = self.coord_to_px(left,top,latlon=latlon)
+        xpx2,ypx2 = self.coord_to_px(right,bottom,latlon=latlon)
+
         # Resulting pixel offsets
         x_offset = xpx2 - xpx1
         y_offset = ypx2 - ypx1
@@ -232,6 +251,8 @@ class __Raster:
                      native system of the raster.
             band : the band number to extract from.
             system : DEPRECATED but maintained for backward compatibility.
+            window : int or None, expand area around coordinate to dimensions
+                      window * window. window must be odd.
 
         Returns:
             if band specified, float of extracted pixel value.
@@ -239,7 +260,15 @@ class __Raster:
             if band not specified, depending on number of bands in dataset:
                 more than 1 band : dict of GDAL band number:float pixel value.
                 just 1 band : float of extracted pixel value.
-        
+
+
+        Examples:
+        >>> self.value_at_coords(-48.125,67.8901,window=3)
+        Returns mean of a 3*3 window:
+            v v v \
+            v c v  | = float(mean)
+            v v v /
+        (c = provided coordinate, v= value of surrounding coordinate)
         """
 
         def format_value(value):
@@ -286,7 +315,7 @@ class __Raster:
         else:
             raise ValueError('Value provided for band was not int or None.')
 
-        return value
+        return value       
 
     
 

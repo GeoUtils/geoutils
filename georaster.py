@@ -117,7 +117,8 @@ class __Raster:
         self.ds_file = ds_filename
         self.ds = gdal.Open(ds_filename)
         trans = self.ds.GetGeoTransform()
-        self.extent = (trans[0], trans[0] + self.ds.RasterXSize*trans[1], trans[3] + self.ds.RasterYSize*trans[5], trans[3])
+        self.extent = (trans[0], trans[0] + self.ds.RasterXSize*trans[1], 
+                       trans[3] + self.ds.RasterYSize*trans[5], trans[3])
         self.srs = osr.SpatialReference()
         self.srs.ImportFromWkt(self.ds.GetProjection())
         self.proj = pyproj.Proj(self.srs.ExportToProj4())
@@ -129,6 +130,34 @@ class __Raster:
         left,bottom = self.proj(self.extent[0],self.extent[2],inverse=True)
         right,top = self.proj(self.extent[1],self.extent[3],inverse=True)
         return (left,right,bottom,top)
+
+
+
+    def get_extent_projected(self,pyproj_obj):
+        """ Return raster extent in a projected coordinate system.
+
+        This is particularly useful for converting raster extent to the 
+        coordinate system of a Basemap instance.
+
+        Parameters:
+            pyproj_obj : A pyproj instance (such as a Basemap instance) of the
+                system to convert into.
+
+        Returns:
+            (left,right,bottom,top)
+
+        Example:
+        >>> from mpl_toolkits.basemap import Basemap
+        >>> my_im = georaster.SingleBandRaster('myfile.tif')
+        >>> my_map = Basemap(...)
+        >>> my_map.imshow(my_im.r,extent=my_im.get_extent_basemap(my_map))
+
+        """
+        xll,xur,yll,yur = self.get_extent_latlon()
+        left,bottom = pyproj_obj(xll,yll)
+        right,top = pyproj_obj(xur,yur)
+        return (left,right,bottom,top)
+
 
 
 
@@ -188,7 +217,8 @@ class __Raster:
 
 
 
-    def value_at_coords(self,x,y,latlon=False,band=None,system=None):
+    def value_at_coords(self,x,y,latlon=False,band=None,system=None,
+                        window=None):
         """ Extract the pixel value(s) at the specified coordinates.
         
         Extract pixel value of each band in dataset at the specified 
@@ -254,7 +284,7 @@ class __Raster:
             value = format_value(self.read_single_band_subset(bounds,
                                                     latlon=latlon,band=band))
         else:
-            raise ValueError('The value provided for band was not int or None.')
+            raise ValueError('Value provided for band was not int or None.')
 
         return value
 

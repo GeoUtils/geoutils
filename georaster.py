@@ -72,6 +72,7 @@ Created on Wed Oct 23 12:06:16 2013
 
 import numpy as np
 from scipy import ndimage
+from scipy.stats import nanmean
 from osgeo import osr, gdal
 import subprocess
 import xml.etree.ElementTree as etree
@@ -237,22 +238,27 @@ class __Raster:
 
 
     def value_at_coords(self,x,y,latlon=False,band=None,system=None,
-                        window=None):
+                        window=None,return_window=False):
         """ Extract the pixel value(s) at the specified coordinates.
         
         Extract pixel value of each band in dataset at the specified 
         coordinates. Alternatively, if band is specified, return only that
         band's pixel value.
+
+        Optionally, return mean of pixels within a square window.
                 
         Parameters:
             x : float, x coordinate.
             y : float, y coordinate.
             latlon : boolean, True if coordinates in WGS84, false if in 
                      native system of the raster.
-            band : the band number to extract from.
+            band : the GDAL Dataset band number to extract from.
             system : DEPRECATED but maintained for backward compatibility.
             window : int or None, expand area around coordinate to dimensions
                       window * window. window must be odd.
+            return_window : boolean, default False. If True when window=int,
+                            returns (mean,array) where array is the dataset 
+                            extracted via the specified window size.
 
         Returns:
             if band specified, float of extracted pixel value.
@@ -260,6 +266,8 @@ class __Raster:
             if band not specified, depending on number of bands in dataset:
                 more than 1 band : dict of GDAL band number:float pixel value.
                 just 1 band : float of extracted pixel value.
+
+            if return_window = True, (value[s],array[s])
 
 
         Examples:
@@ -271,10 +279,17 @@ class __Raster:
         (c = provided coordinate, v= value of surrounding coordinate)
         """
 
+        if window <> None:
+            if window % 2 <> 1:
+                raise ValueError('Window must be an odd number.')
+
         def format_value(value):
             """ Check if valid value has been extracted """
             if type(value) == np.ndarray:
-                value = value[0,0]
+                if window <> None:
+                    value = nanmean(value.flatten())
+                else:
+                    value = value[0,0]
             else:
                 value = None
             return value
@@ -283,39 +298,54 @@ class __Raster:
         if system == 'wgs84':
             latlon = True
 
-        # Create instance of bounds to read; read_single_band_subset will
-        # increment these by 1px after completing the necessary georeferencing
-        # operations.
-        bounds = [x,x,y,y]
 
-        # N.b. Values are returned in array from read_single_band_subset so we 
-        # index in to retrieve the single coordinate value.
+        # Convert coordinates to pixel space
+        xpx,ypx = self.coord_to_px(x,y,latlon=latlon)
+        # Decide what pixel coordinates to read:
+        if window <> None:
+            half_win = (window -1) / 2
+            # Subtract start coordinates back to top left of window
+            xpx = xpx - half_win
+            ypx = ypx - half_win
+            # Offset to read to == window
+            xo = window
+            yo = window
+        else:
+            # Start reading at xpx,ypx and read 1px each way
+            xo = 1
+            yo = 1
+
 
         # Get values for all bands
         if band == None:
 
             # Deal with SingleBandRaster case
             if self.ds.RasterCount == 1:
-                value = format_value(self.read_single_band_subset(bounds,
-                                                            latlon=latlon))
+                data = self.ds.GetRasterBand(1).ReadAsArray(xpx,ypx,xo,yo)
+                value = format_value(data)
+                win = data
             
             # Deal with MultiBandRaster case
             else:    
                 value = {}
                 for b in range(1,self.ds.RasterCount+1):
-                    val = format_value(self.read_single_band_subset(bounds,
-                                                    latlon=latlon,band=b))
+                    d = self.ds.GetRasterBand(b).ReadAsArray(xpx,ypx,xo,yo)
+                    val = format_value(data)
                     # Store according to GDAL band numbers
                     value[b] = val
+                    win[b] = data
 
         # Or just for specified band in MultiBandRaster case                
         elif isinstance(band,int):
-            value = format_value(self.read_single_band_subset(bounds,
-                                                    latlon=latlon,band=band))
+            data = self.ds.GetRasterBand(band).ReadAsArray(xpx,ypx,xo,yo)
+            value = format_value(data)
         else:
             raise ValueError('Value provided for band was not int or None.')
 
-        return value       
+        if return_window == True:
+            return (value,win)
+        else:
+            return value       
 
     
 

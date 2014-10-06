@@ -24,7 +24,6 @@ the following attributes:
                         More information on API:
                         http://www.gdal.org/classGDALDataset.html
 
-
     class.srs   :   an OGR Spatial Reference object representation of the 
                     dataset.
                         More information on API:
@@ -39,30 +38,48 @@ the following attributes:
 Additionally, georeferencing information which requires calculation 
 can be accessed via a number of functions available in the class.
 
-Example use for SingleBandRaster with data import:
->>> import georaster
+
+Examples
+--------
+
+SingleBandRaster with data import:
 >>> my_image = georaster.SingleBandRaster('myfile.tif')
 >>> plt.imshow(my_image.r,extent=my_image.extent)
 The data of a SingleBandRaster is made available via my_image.r as a numpy
 array.
 
-Example use for SingleBandRaster to get some georeferencing info, without 
+SingleBandRaster, loading a subset area of the image defined
+in lat/lon (WGS84):
+>>> my_image = georaster.SingleBandRaster('myfile.tif',load_data=False)
+>>> my_image.r = my_image.read_single_band_subset(self,
+                                                  [xstart,xend,ystart,yend],
+                                                  latlon=True)
+
+SingleBandRaster to get some georeferencing info, without 
 also loading data into memory:
->>> import georaster
 >>> my_image = georaster.SingleBandRaster('myfile.tif',load_data=False)
 >>> print my_image.srs.GetProjParm('central_meridian')
 
-Example use for MultiBandRaster, loading all bands:
->>> import georaster
+MultiBandRaster, loading all bands:
 >>> my_image = georaster.MultiBandRaster('myfile.tif')
 >>> plt.imshow(my_image.r)
 
-Example use for MultiBandRaster, loading just a couple of bands:
->>> import georaster
+MultiBandRaster, loading just a couple of bands:
 >>> my_image = georaster.MultiBandRaster('myfile.tif',load_data=[1,3])
 >>> plt.imshow(my_image.r[:,:,my_image.gdal_band(3)])
 
-For more examples see the the class itself.
+Plotting a Mercator map with basemap. Georaster is used to 
+load the image, find the value for lon_0, and to convert the extent of the 
+image into the coordinate system used by the map object (by passing 
+georaster the map object).
+>>> from mpl_toolkits.basemap import Basemap
+>>> myimg = georaster.SingleBandRaster(file_name)
+>>> map = Basemap(projection='tmerc',...,
+                  lon_0=myimg.srs.GetProjParm('central_meridian'))
+>>> plt.imshow(myimg.r,extent=myimg.get_extent_projected(map))
+
+
+For more examples see the docstrings which accompany each function.
 
 
 Created on Wed Oct 23 12:06:16 2013

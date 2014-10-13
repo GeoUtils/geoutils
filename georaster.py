@@ -194,7 +194,8 @@ class __Raster:
 
 
         Map --> px conversion from:
-        http://gis.stackexchange.com/a/46898
+        landsat_velocities/SupportFunctions.py/convertgeo2pix.py 
+        (commit a3a1061a)
 
         """
 
@@ -202,12 +203,34 @@ class __Raster:
         if latlon == True:
             x,y = self.proj(x,y)
 
-        trans = self.ds.GetGeoTransform()
-        # Coordinates in pixel coordinates
-        xpx = int((x - trans[0]) / trans[1])
-        ypx = int((y - trans[3]) / trans[5]) 
+        g0, g1, g2, g3, g4, g5 = self.ds.GetGeoTransform()
+        if g2 == 0:
+            xPixel = (x - g0) / float(g1)
+            yPixel = (y - g3 - xPixel*g4) / float(g5)
+        else:
+            xPixel = (y*g2 - x*g5 + g0*g5 - g2*g3) / float(g2*g4 - g1*g5)
+            yPixel = (x - g0 - xPixel*g1) / float(g2)
 
-        return(xpx,ypx)
+        # Check that pixel location is not outside image dimensions
+        nx = self.ds.RasterXSize
+        ny = self.ds.RasterYSize
+
+        xPixel = int(round(xPixel))
+        yPixel = int(round(yPixel))
+
+        xPixel_new = min(xPixel,nx)
+        yPixel_new = min(yPixel,ny)
+
+        xPixel_new = max(xPixel_new,0)
+        yPixel_new = max(yPixel_new,0)
+
+        if xPixel_new!=xPixel:
+                print "Warning : longitude %f is out of domain for file %s" %(lon,filename)
+
+        if yPixel_new!=yPixel:
+                print "Warning : latitude %f is out of domain for file %s" %(lat,filename)
+
+        return xPixel_new, yPixel_new
 
 
 
@@ -243,6 +266,7 @@ class __Raster:
         # Resulting pixel offsets
         x_offset = xpx2 - xpx1
         y_offset = ypx2 - ypx1
+
         # In special case of being called to read a single point, offset 1 px
         if x_offset == 0: x_offset = 1
         if y_offset == 0: y_offset = 1

@@ -225,10 +225,12 @@ class __Raster:
         yPixel_new = max(yPixel_new,0)
 
         if xPixel_new!=xPixel:
-                print "Warning : longitude %f is out of domain for file %s" %(lon,filename)
+                print "Warning : longitude %f is out of domain for file %s" %(x,self.ds_file)
+                raise ValueError
 
         if yPixel_new!=yPixel:
-                print "Warning : latitude %f is out of domain for file %s" %(lat,filename)
+                print "Warning : latitude %f is out of domain for file %s" %(y,self.ds_file)
+                raise ValueError
 
         return xPixel_new, yPixel_new
 
@@ -260,8 +262,13 @@ class __Raster:
         # Unlike the bounds tuple, which specifies bottom left and top right
         # coordinates, here we need top left and bottom right for the numpy
         # readAsArray implementation.
-        xpx1,ypx1 = self.coord_to_px(left,top,latlon=latlon)
-        xpx2,ypx2 = self.coord_to_px(right,bottom,latlon=latlon)
+        xpx1,ypx1 = self.coord_to_px(left,bottom,latlon=latlon)
+        xpx2,ypx2 = self.coord_to_px(right,top,latlon=latlon)
+
+        if xpx1 > xpx2:
+            xpx1, xpx2 = xpx2, xpx1
+        if ypx1 > ypx2:
+            ypx1, ypx2 = ypx2, ypx1
 
         # Resulting pixel offsets
         x_offset = xpx2 - xpx1

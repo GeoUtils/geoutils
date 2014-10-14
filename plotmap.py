@@ -1,6 +1,16 @@
 #coding=utf-8
 """
-Class to generate Basemap figures.
+plotmap.py
+
+Map : class to generate Basemap figures.
+
+Creates a geo-referenced Basemap figure, and provides a number of methods 
+to add different types of layers and information.
+
+The methods are broadly arranged in the expected calling sequence. See 
+method docstrings for further information.
+
+For a practical example look at landsat_velocities/PlotFunctions.plot_map().
 
 Author : Andrew Tedstone
 Date: October 2014
@@ -27,17 +37,28 @@ class Map:
     def __init__(self,ds_file=None,extent=None,lon_0=None):
         """
 
-        Provide either: 
-            ds_file (str, link to geoTIFF)
+        Create the Map object, which itself creates a Basemap instance.
+
+        The Map object must be initialised with georeferencing information.
+        This can be provided in two ways:
+            ds_file : str, link to a GeoTIFF. The extent of the plotting area
+                      and the lon_0 will be set according to the properties of
+                      the GeoTIFF.
         Or: 
-            extent : (lonll,lonur,latll,latur)
+            extent : (lon_lower_left,lon_upper_right,lat_lower_left,
+                      lat_upper_right)
             lon_0 : float, longitude of origin
+
+        E.g.
+        >>> mymap = Map(ds_file='myim.tif')
+
+        E.g.
+        >>> mymap = Map(extent=(-50,-48,67,68),lon_0=70)
 
         """
 
         # Create figure
         self.fig = pl.figure()
-        self.plt = pl.subplot(111)
 
         # Get basic georeferencing info for map
         # From a geoTIFF
@@ -60,44 +81,84 @@ class Map:
                       lon_0=lon_0,lat_0=0)
 
 
-    def plot_background(self,bg_file,region='all'):
-        bg_im = georaster.SingleBandRaster(bg_file,read_data=False)
+
+    def plot_background(self,bg_file,region='all',coarse=False):
+        """
+        Plot a background image onto the Basemap, in black and white.
+
+        Optionally, coarsen resolution of background image, which will
+        result in smaller file sizes in saved vector formats.
+
+        Inputs:
+            bg_file : str, path and filename of single-band GeoTIFF
+            region : 'all' or latlon tuple (lonll,lonur,latll,latur)
+            coarse : False or int to coarsen image by (e.g. 2)
+
+        """
+
+        bg_im = georaster.SingleBandRaster(bg_file,load_data=False)
         if region <> 'all':
-            bg_im.r = bg_im.read_single_band_subset(region,latlon=True) 
+            try:
+                bg_im.r = bg_im.read_single_band_subset(region,latlon=True) 
+            except ValueError:
+                print 'Region not within background image bounds, using full image bounds instead . . .'
+                bg_im.r = bg_im.read_single_band()    
         else:
             bg_im.r = bg_im.read_single_band()
+
         # Reduce image resolution
-        bg_im.r = bg_im.r[::4,::4]
-        bg_im.r = np.where(bg_im.r == 0,np.nan,bg_im)   #remove black color
-        self.plt.imshow(bg_im.r,cmap=cm.Greys_r,extent=bg_im.get_extent_projected(map),
+        if coarse <> False:
+            if type(coarse) == int:
+                bg_im.r = bg_im.r[::coarse,::coarse]
+
+        bg_im.r = np.where(bg_im.r == 0,np.nan,bg_im.r)   #remove black color
+        pl.imshow(bg_im.r,cmap=cm.Greys_r,
+                  extent=bg_im.get_extent_projected(self.map),
                   interpolation='nearest')
 
 
+
     def plot_dem(self,dem_file,region='all'):
+        """
+        Plot a DEM using light-shading on the Basemap.
+
+        Inputs:
+            dem_file : path and filename of GeoTIFF DEM.
+            region : 'all' or latlon tuple (lonll,lonur,latll,latur)
+
+        """
 
         dem_im = georaster.SingleBandRaster(dem_file,load_data=False)   
         if region <> 'all':
-            dem_im.r = dem_im.read_single_band_subset(region,latlon=True) 
+            try:
+                dem_im.r = dem_im.read_single_band_subset(region,latlon=True) 
+            except ValueError:
+                print 'Region not within DEM bounds, using full DEM bounds instead . . .'
+                dem_im.r = dem_im.read_single_band()   
         else:
             dem_im.r = dem_im.read_single_band()
         ls = LightSource(azdeg=135,altdeg=80)
         rgb = ls.shade(dem_im.r,cmap=cm.Greys_r)  
-        self.plt.imshow(rgb,extent=dem_im.get_extent_projected(self.map),interpolation='nearest')
+        pl.imshow(rgb,extent=dem_im.get_extent_projected(self.map),
+            interpolation='nearest')
 
 
 
-
-    def plot_mask(self,mask_file,data,region='all'):
+    def plot_mask(self,mask_file,data,cmap,region='all'):
         """
+        Plot masked values of the provided dataset.
+
+        This can be useful to display 'bad' regions. If the colormap is set to
+        discrete, the regions will be plotted in red, otherwise in white.
 
         Arguments:
             mask_file : str, path to geoTIFF of mask
             data : georaster object of the data to mask
-            region : optional, (lonll,lonur,latll,latur) of area to plot
+            region : optional, latlon tuple (lonll,lonur,latll,latur) 
 
         """
             
-        mask = georaster.SingleBandRaster(maskfile,load_data=False)
+        mask = georaster.SingleBandRaster(mask_file,load_data=False)
         if region == 'all':
             mask.r = mask.read_single_band_subset(region,latlon=True)
         else:
@@ -112,21 +173,29 @@ class Map:
         # Now plot the bad data values
         red_cmap = cm.jet
         if cmap == 'discr':
-            red_cmap.set_under((155./255,0./255,0./255)) #gaps displayed in red
+            # gaps displayed in red
+            red_cmap.set_under((155./255,0./255,0./255)) 
         else:
             red_cmap.set_under((1,1,1))  #gaps displayed in white
-        self.plt.imshow(data_nan,extent=data.get_extent_projected(self.map),
+        pl.imshow(data_nan,extent=data.get_extent_projected(self.map),
                   cmap=red_cmap,vmin=-1,vmax=0,interpolation='nearest',alpha=1)
+
 
 
     def plot_data(self,data,vmin='min',vmax='max',cmap='cm.jet'):
         """
+        Basic function to plot a dataset with minimum and maximum values.
+
+        In many cases you will be better off calling pl.imshow yourself
+        instead.
 
         Arguments:
             data : georaster object of data to plot
+            vmin : 'min' or minimum value to plot
+            vmax : 'max' or maximum value to plot
+            cmap : colormap, in format cn.<name>
 
         """
-        print data.r
 
         if vmin == 'min':
             vmin = np.nanmin(data.r)
@@ -137,41 +206,81 @@ class Map:
             cmap = cm.Blues
             bounds = [0,5,10,15,20,30,40,80,120,200]
             norm = colors.BoundaryNorm(bounds, cmap.N)
-            self.plt.imshow(data.r,extent=data.get_extent_projected(self.map),cmap=cmap,
+            pl.imshow(data.r,extent=data.get_extent_projected(self.map),
+                cmap=cmap,
                 vmin=0,norm=norm,interpolation='nearest',alpha=alpha)
         # Continuous colormap option
         else:
             cmap = eval(cmap)
-            self.plt.imshow(data.r,extent=data.get_extent_projected(self.map),cmap=cmap,
+            pl.imshow(data.r,extent=data.get_extent_projected(self.map),
+                cmap=cmap,
                 vmin=vmin,vmax=vmax,interpolation='nearest',alpha=1)
 
 
-    def plot_scales(self,mstep,pstep,length):
+    def geo_ticks(mstep,pstep):
+        """
+        Add geographic (latlon) ticks to plot.
+
+        Arguments:
+            mstep :  float, meridians stepping, degrees
+            pstep : float, parallels stepping, degrees
+
+        """
         lonll, lonur, latll, latur = self.extent
         m0 = int(lonll/mstep)*mstep
         m1 = int(lonur/mstep+1)*mstep
         p0 = int(latll/pstep)*pstep
         p1 = int(latur/pstep+1)*pstep
+        self.map.drawparallels(np.arange(p0,p1,pstep),labels=[1,0,0,0],
+            linewidth=0)
+        self.map.drawmeridians(np.arange(m0,m1,mstep),labels=[0,0,0,1],
+            linewidth=0)
+
+
+
+    def plot_scale(self,length):
+        """
+        Plot a scale bar on the figure.
+
+        Arguments:
+            length : float, length of scale bar in map units/
+
+        """
+        lonll, lonur, latll, latur = self.extent
         xloc = lonll + 0.85*(lonur-lonll)
         yloc = latll + 0.93*(latur-latll)
-        self.map.drawparallels(np.arange(p0,p1,pstep),labels=[1,0,0,0],linewidth=0)
-        self.map.drawmeridians(np.arange(m0,m1,mstep),labels=[0,0,0,1],linewidth=0)
         self.map.drawmapscale(xloc,yloc,(lonur+lonll)/2,(latur+latll)/2,length,
                          barstyle='fancy')
 
 
-    def plot_colorbar(self):
-        # Draw colorbar of the same height as the figure
-        ax = self.plt   #get axis properties
+
+    def plot_colorbar(self,label=None):
+        """
+        Draw colorbar of the same height as the figure.
+
+        Arguments:
+            label : str, text to label colorbar with
+
+        """
+        ax = self.fig.gca()   #get axis properties
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="5%", pad=0.05)
         cb = pl.colorbar(cax=cax)
-        if label!='':
+        if label != None:
             cb.set_label(label)
         cb.set_alpha(1)  #no transparency
         cb.draw_all()
 
 
+
     def save_figure(self,outfile):
+        """
+        Save figure to outfile, having adjusted subplots, with 300dpi resn.
+
+        Arguments:
+            outfile : str, path and filename of file to save to.
+
+        """
+
         self.fig.subplots_adjust(left=0.1, right=0.9, top=0.95, bottom=0.07)
         self.fig.savefig(outfile,dpi=300)

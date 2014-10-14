@@ -208,7 +208,7 @@ class Map:
             norm = colors.BoundaryNorm(bounds, cmap.N)
             pl.imshow(data.r,extent=data.get_extent_projected(self.map),
                 cmap=cmap,
-                vmin=0,norm=norm,interpolation='nearest',alpha=alpha)
+                vmin=0,norm=norm,interpolation='nearest',alpha=1)
         # Continuous colormap option
         else:
             cmap = eval(cmap)

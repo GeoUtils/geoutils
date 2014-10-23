@@ -144,7 +144,7 @@ class Map:
 
 
 
-    def plot_mask(self,mask_file,data,cmap,region='all'):
+    def plot_mask(self,mask_file,color='turquoise',region='all'):
         """
         Plot masked values of the provided dataset.
 
@@ -154,6 +154,7 @@ class Map:
         Arguments:
             mask_file : str, path to geoTIFF of mask
             data : georaster object of the data to mask
+            color : any matplotlib color, str or RGB triplet
             region : optional, latlon tuple (lonll,lonur,latll,latur) 
 
         """
@@ -164,21 +165,23 @@ class Map:
         else:
             mask.r = mask.read_single_band()
 
-        # set NaN value to -999 to display in a different color
-        data.r = np.where(np.isnan(data.r),-999,data.r)  
-        
-        data_nan = np.where((mask.r > 0) & (data.r == -999),data.r,np.nan)
-        data.r = np.where((mask.r > 0) & (data.r > 0),data.r,np.nan)
+        #Pixels outside mask are transparent
+        mask.r = np.where(mask.r==0,np.nan,1)
 
         # Now plot the bad data values
-        red_cmap = cm.jet
-        if cmap == 'discr':
-            # gaps displayed in red
-            red_cmap.set_under((155./255,0./255,0./255)) 
+        cmap = cm.jet
+        if color == 'turquoise':
+            cmap.set_over((64./255,224./255,208./255))
+            alpha=0.6
         else:
-            red_cmap.set_under((1,1,1))  #gaps displayed in white
-        pl.imshow(data_nan,extent=data.get_extent_projected(self.map),
-                  cmap=red_cmap,vmin=-1,vmax=0,interpolation='nearest',alpha=1)
+            try:
+                cmap.set_over(eval(color))  #color is a RGB triplet
+            except NameError: 
+                cmap.set_over(color)      #color is str, e.g red, white...
+            alpha=1
+
+        pl.imshow(mask.r,extent=mask.get_extent_projected(self.map),
+                  cmap=cmap,vmin=-1,vmax=0,interpolation='nearest',alpha=alpha)
 
 
 
@@ -217,7 +220,7 @@ class Map:
                 vmin=vmin,vmax=vmax,interpolation='nearest',alpha=1)
 
 
-    def geo_ticks(mstep,pstep):
+    def geo_ticks(self,mstep,pstep):
         """
         Add geographic (latlon) ticks to plot.
 

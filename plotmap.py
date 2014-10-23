@@ -144,7 +144,7 @@ class Map:
 
 
 
-    def plot_mask(self,mask_file,data,color='red',region='all'):
+    def plot_mask(self,mask_file,color='turquoise',region='all'):
         """
         Plot masked values of the provided dataset.
 
@@ -165,21 +165,23 @@ class Map:
         else:
             mask.r = mask.read_single_band()
 
-        # set NaN value to -999 to display in a different color
-        data_nan = np.where((mask.r > 0) & np.isnan(data.r),-999,np.nan)
+        #Pixels outside mask are transparent
+        mask.r = np.where(mask.r==0,np.nan,1)
 
         # Now plot the bad data values
         cmap = cm.jet
         if color == 'turquoise':
-            cmap.set_under((64./255,224./255,208./255))
+            cmap.set_over((64./255,224./255,208./255))
+            alpha=0.6
         else:
             try:
-                cmap.set_under(eval(color))  #color is a RGB triplet
+                cmap.set_over(eval(color))  #color is a RGB triplet
             except NameError: 
-                cmap.set_under(color)      #color is str, e.g red, white...
+                cmap.set_over(color)      #color is str, e.g red, white...
+            alpha=1
 
-        pl.imshow(data_nan,extent=data.get_extent_projected(self.map),
-                  cmap=cmap,vmin=-1,vmax=0,interpolation='nearest',alpha=1)
+        pl.imshow(mask.r,extent=mask.get_extent_projected(self.map),
+                  cmap=cmap,vmin=-1,vmax=0,interpolation='nearest',alpha=alpha)
 
 
 

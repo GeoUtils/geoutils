@@ -139,15 +139,20 @@ class __Raster:
                        trans[3] + self.ds.RasterYSize*trans[5], trans[3])
         self.srs = osr.SpatialReference()
         self.srs.ImportFromWkt(self.ds.GetProjection())
-        self.proj = pyproj.Proj(self.srs.ExportToProj4())
+
+        if len(self.ds.GetProjection().split('PROJCS')) == 2:
+            self.proj = pyproj.Proj(self.srs.ExportToProj4())
 
 
  
     def get_extent_latlon(self):
         """ Return raster extent in lat/lon, (xll,xur,yll,yur) """
-        left,bottom = self.proj(self.extent[0],self.extent[2],inverse=True)
-        right,top = self.proj(self.extent[1],self.extent[3],inverse=True)
-        return (left,right,bottom,top)
+        if self.proj <> None:
+            left,bottom = self.proj(self.extent[0],self.extent[2],inverse=True)
+            right,top = self.proj(self.extent[1],self.extent[3],inverse=True)
+            return (left,right,bottom,top)
+        else:
+            return self.extent
 
 
 
@@ -171,11 +176,14 @@ class __Raster:
         >>> my_map.imshow(my_im.r,extent=my_im.get_extent_basemap(my_map))
 
         """
-        xll,xur,yll,yur = self.get_extent_latlon()
+        if self.proj <> None:
+            xll,xur,yll,yur = self.get_extent_latlon()
+        else:
+            xll,xur,yll,yur = self.extent
+
         left,bottom = pyproj_obj(xll,yll)
         right,top = pyproj_obj(xur,yur)
         return (left,right,bottom,top)
-
 
 
 
@@ -199,8 +207,9 @@ class __Raster:
 
         """
 
-        # Convert coordinates to map system if provided in lat/lon
-        if latlon == True:
+        # Convert coordinates to map system if provided in lat/lon and image
+        # is projected (rather than geographic)
+        if latlon == True and self.proj <> None:
             x,y = self.proj(x,y)
 
         g0, g1, g2, g3, g4, g5 = self.ds.GetGeoTransform()
@@ -258,10 +267,10 @@ class __Raster:
         """
         
         left,right,bottom,top = bounds
-
+        
         # Unlike the bounds tuple, which specifies bottom left and top right
         # coordinates, here we need top left and bottom right for the numpy
-        # readAsArray implementation.
+        # readAsArray implementation.    
         xpx1,ypx1 = self.coord_to_px(left,bottom,latlon=latlon)
         xpx2,ypx2 = self.coord_to_px(right,top,latlon=latlon)
 

@@ -217,7 +217,7 @@ class Map:
                 vmin=vmin,vmax=vmax,interpolation='nearest',alpha=1)
 
 
-    def geo_ticks(mstep,pstep):
+    def geo_ticks(self,mstep,pstep):
         """
         Add geographic (latlon) ticks to plot.
 

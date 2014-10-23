@@ -144,7 +144,7 @@ class Map:
 
 
 
-    def plot_mask(self,mask_file,data,cmap,region='all'):
+    def plot_mask(self,mask_file,data,color='red',region='all'):
         """
         Plot masked values of the provided dataset.
 
@@ -154,6 +154,7 @@ class Map:
         Arguments:
             mask_file : str, path to geoTIFF of mask
             data : georaster object of the data to mask
+            color : any matplotlib color, str or RGB triplet
             region : optional, latlon tuple (lonll,lonur,latll,latur) 
 
         """
@@ -165,20 +166,20 @@ class Map:
             mask.r = mask.read_single_band()
 
         # set NaN value to -999 to display in a different color
-        data.r = np.where(np.isnan(data.r),-999,data.r)  
-        
-        data_nan = np.where((mask.r > 0) & (data.r == -999),data.r,np.nan)
-        data.r = np.where((mask.r > 0) & (data.r > 0),data.r,np.nan)
+        data_nan = np.where((mask.r > 0) & np.isnan(data.r),-999,np.nan)
 
         # Now plot the bad data values
-        red_cmap = cm.jet
-        if cmap == 'discr':
-            # gaps displayed in red
-            red_cmap.set_under((155./255,0./255,0./255)) 
+        cmap = cm.jet
+        if color == 'turquoise':
+            cmap.set_under((64./255,224./255,208./255))
         else:
-            red_cmap.set_under((1,1,1))  #gaps displayed in white
+            try:
+                cmap.set_under(eval(color))  #color is a RGB triplet
+            except NameError: 
+                cmap.set_under(color)      #color is str, e.g red, white...
+
         pl.imshow(data_nan,extent=data.get_extent_projected(self.map),
-                  cmap=red_cmap,vmin=-1,vmax=0,interpolation='nearest',alpha=1)
+                  cmap=cmap,vmin=-1,vmax=0,interpolation='nearest',alpha=1)
 
 
 

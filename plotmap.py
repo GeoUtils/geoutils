@@ -100,6 +100,8 @@ class Map:
         if region <> 'all':
             try:
                 bg_im.r = bg_im.read_single_band_subset(region,latlon=True) 
+                # Modify extent to be same as subset region
+                bg_im.extent = region
             except ValueError:
                 print 'Region not within background image bounds, using full image bounds instead . . .'
                 bg_im.r = bg_im.read_single_band()    
@@ -132,19 +134,22 @@ class Map:
         if region <> 'all':
             try:
                 dem_im.r = dem_im.read_single_band_subset(region,latlon=True) 
+                # Modify extent to be the same as the subset region
+                dem_im.extent = region
             except ValueError:
                 print 'Region not within DEM bounds, using full DEM bounds instead . . .'
                 dem_im.r = dem_im.read_single_band()   
         else:
             dem_im.r = dem_im.read_single_band()
-        ls = LightSource(azdeg=135,altdeg=80)
+            
+        ls = LightSource(azdeg=0,altdeg=180)
         rgb = ls.shade(dem_im.r,cmap=cm.Greys_r)  
         pl.imshow(rgb,extent=dem_im.get_extent_projected(self.map),
             interpolation='nearest')
 
 
 
-    def plot_mask(self,mask_file,color='turquoise',region='all'):
+    def plot_mask(self,mask_file,color='turquoise',region='all',alpha=1):
         """
         Plot masked values of the provided dataset.
 
@@ -153,7 +158,6 @@ class Map:
 
         Arguments:
             mask_file : str, path to geoTIFF of mask
-            data : georaster object of the data to mask
             color : any matplotlib color, str or RGB triplet
             region : optional, latlon tuple (lonll,lonur,latll,latur) 
 
@@ -162,6 +166,7 @@ class Map:
         mask = georaster.SingleBandRaster(mask_file,load_data=False)
         if region == 'all':
             mask.r = mask.read_single_band_subset(region,latlon=True)
+            mask.extent = region
         else:
             mask.r = mask.read_single_band()
 
@@ -172,13 +177,13 @@ class Map:
         cmap = cm.jet
         if color == 'turquoise':
             cmap.set_over((64./255,224./255,208./255))
-            alpha=0.6
+        elif color == 'discr':
+            cmap.set_under((155./255,0./255,0./255)) #gaps displayed in red
         else:
             try:
                 cmap.set_over(eval(color))  #color is a RGB triplet
             except NameError: 
                 cmap.set_over(color)      #color is str, e.g red, white...
-            alpha=1
 
         pl.imshow(mask.r,extent=mask.get_extent_projected(self.map),
                   cmap=cmap,vmin=-1,vmax=0,interpolation='nearest',alpha=alpha)

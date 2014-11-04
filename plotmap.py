@@ -164,7 +164,7 @@ class Map:
         """
             
         mask = georaster.SingleBandRaster(mask_file,load_data=False)
-        if region == 'all':
+        if region != 'all':
             mask.r = mask.read_single_band_subset(region,latlon=True)
             mask.extent = region
         else:

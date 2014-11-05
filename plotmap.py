@@ -150,7 +150,6 @@ class Map:
             region : optional, latlon tuple (lonll,lonur,latll,latur) 
 
         """
-            
         
         if region == 'all':
             mask = georaster.SingleBandRaster(mask_file)

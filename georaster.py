@@ -251,7 +251,7 @@ class __Raster:
 
 
 
-    def read_single_band_subset(self,bounds,latlon=False,band=1):
+    def read_single_band_subset(self,bounds,latlon=False,extent=False,band=1):
         """ Return a subset area of the specified band of the dataset.
 
         Supply coordinates in native system or lat/lon.
@@ -260,6 +260,8 @@ class __Raster:
             bounds : tuple (xstart,xend,ystart,yend) (same format as extent)
             latlon : boolean, default False. Set as True if bounds in lat/lon.
             band : int, number of band to read. Default 1.
+            extent: boolean, default False. If True, return extent of subset 
+                area in the coordinate system of the image.
 
         Returns:
             np.array of subset area
@@ -290,7 +292,18 @@ class __Raster:
         # Read array and return
         arr = self.ds.GetRasterBand(band).ReadAsArray(xpx1,ypx1,
                                                       x_offset,y_offset)
-        return arr
+
+        if extent == True:
+            # (top left x, w-e px res, 0, top left y, 0, n-s px res)
+            trans = self.ds.GetGeoTransform() 
+            if latlon == True and self.proj <> None:
+                left,top = self.proj(left,top)
+            # (left,right,bottom,top)
+            extent = (left, left + x_offset*trans[1], 
+                       top + y_offset*trans[5], top)
+            return (arr,extent)
+        else:
+            return arr
 
 
 
@@ -484,20 +497,40 @@ class SingleBandRaster(__Raster):
     # Numpy array of band data
     r = None
      
-    def __init__(self,ds_filename,load_data=True):
+    def __init__(self,ds_filename,load_data=True,latlon=True,band=1):
         """ Construct object with raster from a single band dataset. 
         
         Parameters:
             ds_filename : filename of the dataset to import
-            load_data : boolean, default True, to import the data into obj.r.
+            load_data : - True, to import the data into obj.r. 
+                        - False, to not load any data.
+                        - tuple (left, right, bottom, top) to load subset; 
+                          obj.extent will be set to reflect subset area.
+            latlon : default True. Only used if load_data=tuple. Set as False
+                     if tuple is projected coordinates, True if WGS84.
+            band : default 1. Specify GDAL band number to load. If you want to
+                   load multiple bands at once use MultiBandRaster instead.
             
         """
         self._load_ds(ds_filename)     
         
+        # Load entire image
         if load_data == True:
-            self.r = self.read_single_band(1)
+            self.r = self.read_single_band(band)
 
-    
+        # Or load just a subset region
+        elif isinstance(load_data,tuple):
+            if len(load_data) == 4:
+                (self.r,self.extent) = self.read_single_band_subset(load_data,
+                                        latlon=latlon,extent=True,band=band)
+
+        elif load_data == False:
+            return
+
+        else:
+            print 'Warning : load_data argument not understood. No data loaded.'
+
+   
         
     def find_value_at_coords(self,x,y,**kwargs):
         """ (DEPRECATED) Extract the pixel value at the specified coordinates.
@@ -593,37 +626,64 @@ class MultiBandRaster(__Raster):
     bands = None
 
 
-    def __init__(self,ds_filename,load_data=True):
+    def __init__(self,ds_filename,load_data=True,bands='all',latlon=True):
         """ Load a multi-band raster.
 
         Parameters:
             ds_filename : filename of dataset to load
-            load_data : True, False, or tuple of raster bands. If tuple,
+            load_data : True, False or tuple (lonll,lonur,latll,latur)
+            latlon : When load_data=tuple of coordinates, True if geographic, 
+                     False if projected.
+            bands : 'all', or tuple of raster bands. If tuple,
                 MultiBandRaster.r will be a numpy array [y,x,b], where bands
                 are indexed from 0 to n in the order specified in the tuple.
 
         """
         self._load_ds(ds_filename)
 
-        if load_data == True:
-            self.r = np.zeros((self.ds.RasterYSize,self.ds.RasterXSize,
-                               self.ds.RasterCount))
-            for b in range(0,self.ds.RasterCount):
-                self.r[:,:,b] = self.read_single_band(band=b+1)
-            self.bands = range(1,self.ds.RasterCount+1)
+        if load_data <> False:
 
+            # First check which bands to load
+            if bands == 'all':
+                self.bands = range(1,self.ds.RasterCount+1)
+            else:
+                if isinstance(bands,tuple):
+                    self.bands = bands
+                else:
+                    print 'bands is not "all" or tuple'
+                    raise ValueError
+
+            # Loading whole dimensions of raster
+            if load_data == True:
+                self.r = np.zeros((self.ds.RasterYSize,self.ds.RasterXSize,
+                               len(self.bands)))
+                k = 0
+                for b in self.bands:
+                    self.r[:,:,k] = self.read_single_band(band=b)
+                    k += 1
+
+            # Loading geographic subset of raster
+            elif isinstance(load_data,tuple):
+                if len(load_data) == 4:
+                    k = 0
+                    for b in self.bands:
+                        # If first band, create a storage object
+                        if self.r == None:
+                            (tmp,self.extent) = self.read_single_band_subset(load_data,
+                                        latlon=latlon,extent=True,band=b)
+                            self.r = np.zeros((tmp.shape[0],tmp.shape[1],
+                               len(self.bands)))
+                            self.r[:,:,k] = tmp
+                        # Store subsequent bands in kth dimension of store.
+                        else:
+                            self.r[:,:,k] = self.read_single_band_subset(load_data,
+                                        latlon=latlon,band=b)
+                        k += 1
+
+        # Don't load any data
         elif load_data == False:
-            bands = None
+            self.bands = None
             return
-
-        elif isinstance(load_data,(tuple,list)) == True:
-            self.r = np.zeros((self.ds.RasterYSize,self.ds.RasterXSize,
-                               len(load_data)))
-            k = 0
-            for b in load_data:
-                self.r[:,:,k] = self.read_single_band(band=b)
-                k += 1
-            self.bands = load_data
 
         else:
             raise ValueError('load_data was not understood (should be one \

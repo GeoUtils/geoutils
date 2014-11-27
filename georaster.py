@@ -39,6 +39,11 @@ Additionally, georeferencing information which requires calculation
 can be accessed via a number of functions available in the class.
 
 
+Raster access:
+    
+    class.r : numpy array, m*n for SingleBandRaster, m*n*bands for MultiBand.
+
+
 Examples
 --------
 
@@ -50,10 +55,13 @@ array.
 
 SingleBandRaster, loading a subset area of the image defined
 in lat/lon (WGS84):
->>> my_image = georaster.SingleBandRaster('myfile.tif',load_data=False)
->>> my_image.r = my_image.read_single_band_subset(self,
-                                                  [xstart,xend,ystart,yend],
-                                                  latlon=True)
+>>> my_image = georaster.SingleBandRaster('myfile.tif',load_data=
+                                            (lonll,lonur,latll,latur),
+                                            latlon=True)
+Or in image projection system:
+>>> my_image = georaster.SingleBandRaster('myfile.tif',load_data=
+                                            (xstart,xend,ystart,yend),
+                                            latlon=False)
 
 SingleBandRaster to get some georeferencing info, without 
 also loading data into memory:
@@ -65,7 +73,7 @@ MultiBandRaster, loading all bands:
 >>> plt.imshow(my_image.r)
 
 MultiBandRaster, loading just a couple of bands:
->>> my_image = georaster.MultiBandRaster('myfile.tif',load_data=[1,3])
+>>> my_image = georaster.MultiBandRaster('myfile.tif',bands=[1,3])
 >>> plt.imshow(my_image.r[:,:,my_image.gdal_band(3)])
 
 Plotting a Mercator map with basemap. Georaster is used to 
@@ -78,8 +86,9 @@ georaster the map object).
                   lon_0=myimg.srs.GetProjParm('central_meridian'))
 >>> plt.imshow(myimg.r,extent=myimg.get_extent_projected(map))
 
+For more complicated mapping take a look at the geoutils/plotmap.Map class.
 
-For more examples see the docstrings which accompany each function.
+For more georaster examples see the docstrings which accompany each function.
 
 
 Created on Wed Oct 23 12:06:16 2013
@@ -134,6 +143,12 @@ class __Raster:
         """ Load link to data file and set up georeferencing """
         self.ds_file = ds_filename
         self.ds = gdal.Open(ds_filename)
+
+        if self.ds.GetProjection() == '':
+            print 'Specified image does not have any associated \
+            georeferencing information.'
+            raise RuntimeError
+
         trans = self.ds.GetGeoTransform()
         self.extent = (trans[0], trans[0] + self.ds.RasterXSize*trans[1], 
                        trans[3] + self.ds.RasterYSize*trans[5], trans[3])

@@ -250,11 +250,11 @@ class __Raster:
 
         if xPixel_new!=xPixel:
                 print "Warning : longitude %f is out of domain for file %s" %(x,self.ds_file)
-                raise ValueError
+                raise ValueError("longitude %f is out of domain for file %s" %(x,self.ds_file))
 
         if yPixel_new!=yPixel:
                 print "Warning : latitude %f is out of domain for file %s" %(y,self.ds_file)
-                raise ValueError
+                raise ValueError("Warning : latitude %f is out of domain for file %s" %(y,self.ds_file))
 
         return xPixel_new, yPixel_new
 

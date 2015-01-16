@@ -534,7 +534,7 @@ class SingleBandRaster(__Raster):
             self.r = self.read_single_band(band)
 
         # Or load just a subset region
-        elif isinstance(load_data,tuple):
+        elif isinstance(load_data,tuple) or isinstance(load_data,list):
             if len(load_data) == 4:
                 (self.r,self.extent) = self.read_single_band_subset(load_data,
                                         latlon=latlon,extent=True,band=band)

@@ -96,26 +96,20 @@ class Map:
 
         """
 
-        bg_im = georaster.SingleBandRaster(bg_file,load_data=False)
-        if region <> 'all':
-            try:
-                bg_im.r = bg_im.read_single_band_subset(region,latlon=True) 
-                # Modify extent to be same as subset region
-                bg_im.extent = region
-            except ValueError:
-                print 'Region not within background image bounds, using full image bounds instead . . .'
-                bg_im.r = bg_im.read_single_band()    
+        if region == 'all':
+            bg = georaster.SingleBandRaster(bg_file)
         else:
-            bg_im.r = bg_im.read_single_band()
+            bg = georaster.SingleBandRaster(bg_file,load_data=region,
+                                              latlon=True)
 
         # Reduce image resolution
         if coarse <> False:
             if type(coarse) == int:
-                bg_im.r = bg_im.r[::coarse,::coarse]
+                bg.r = bg_im.r[::coarse,::coarse]
 
-        bg_im.r = np.where(bg_im.r == 0,np.nan,bg_im.r)   #remove black color
-        pl.imshow(bg_im.r,cmap=cm.Greys_r,
-                  extent=bg_im.get_extent_projected(self.map),
+        bg.r = np.where(bg.r == 0,np.nan,bg.r)   #remove black color
+        pl.imshow(bg.r,cmap=cm.Greys_r,
+                  extent=bg.get_extent_projected(self.map),
                   interpolation='nearest')
 
 
@@ -129,22 +123,16 @@ class Map:
             region : 'all' or latlon tuple (lonll,lonur,latll,latur)
 
         """
-
-        dem_im = georaster.SingleBandRaster(dem_file,load_data=False)   
-        if region <> 'all':
-            try:
-                dem_im.r = dem_im.read_single_band_subset(region,latlon=True) 
-                # Modify extent to be the same as the subset region
-                dem_im.extent = region
-            except ValueError:
-                print 'Region not within DEM bounds, using full DEM bounds instead . . .'
-                dem_im.r = dem_im.read_single_band()   
+ 
+        if region == 'all':
+            dem = georaster.SingleBandRaster(dem_file)
         else:
-            dem_im.r = dem_im.read_single_band()
+            dem = georaster.SingleBandRaster(dem_file,load_data=region,
+                                              latlon=True)
             
         ls = LightSource(azdeg=0,altdeg=180)
-        rgb = ls.shade(dem_im.r,cmap=cm.Greys_r)  
-        pl.imshow(rgb,extent=dem_im.get_extent_projected(self.map),
+        rgb = ls.shade(dem.r,cmap=cm.Greys_r)  
+        pl.imshow(rgb,extent=dem.get_extent_projected(self.map),
             interpolation='nearest')
 
 
@@ -162,13 +150,12 @@ class Map:
             region : optional, latlon tuple (lonll,lonur,latll,latur) 
 
         """
-            
-        mask = georaster.SingleBandRaster(mask_file,load_data=False)
+        
         if region == 'all':
-            mask.r = mask.read_single_band_subset(region,latlon=True)
-            mask.extent = region
+            mask = georaster.SingleBandRaster(mask_file)
         else:
-            mask.r = mask.read_single_band()
+            mask = georaster.SingleBandRaster(mask_file,load_data=region,
+                                              latlon=True)
 
         #Pixels outside mask are transparent
         mask.r = np.where(mask.r==0,np.nan,1)

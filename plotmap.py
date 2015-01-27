@@ -233,7 +233,7 @@ class Map:
 
 
 
-    def plot_scale(self,length):
+    def plot_scale(self,length,color='k'):
         """
         Plot a scale bar on the figure.
 
@@ -245,7 +245,7 @@ class Map:
         xloc = lonll + 0.85*(lonur-lonll)
         yloc = latll + 0.93*(latur-latll)
         self.map.drawmapscale(xloc,yloc,(lonur+lonll)/2,(latur+latll)/2,length,
-                         barstyle='fancy')
+                         barstyle='fancy',fontcolor=color)
 
 
 

@@ -177,7 +177,7 @@ class Map:
 
 
 
-    def plot_data(self,data,vmin='min',vmax='max',cmap='cm.jet'):
+    def plot_data(self,data,vmin='min',vmax='max',cmap='jet'):
         """
         Basic function to plot a dataset with minimum and maximum values.
 
@@ -188,7 +188,7 @@ class Map:
             data : georaster object of data to plot
             vmin : 'min' or minimum value to plot
             vmax : 'max' or maximum value to plot
-            cmap : colormap, in format cn.<name>
+            cmap : str, matplotlib colormap
 
         """
 
@@ -206,9 +206,8 @@ class Map:
                 vmin=0,norm=norm,interpolation='nearest',alpha=1)
         # Continuous colormap option
         else:
-            cmap = eval(cmap)
             pl.imshow(data.r,extent=data.get_extent_projected(self.map),
-                cmap=cmap,
+                cmap=pl.get_cmap(cmap),
                 vmin=vmin,vmax=vmax,interpolation='nearest',alpha=1)
 
 

@@ -158,7 +158,8 @@ class __Raster:
         if len(self.ds.GetProjection().split('PROJCS')) == 2:
             self.proj = pyproj.Proj(self.srs.ExportToProj4())
 
-
+        band = self.ds.GetRasterBand(1)
+        self.dtype = gdal.GetDataTypeName(band.DataType)
  
     def get_extent_latlon(self):
         """ Return raster extent in lat/lon, (xll,xur,yll,yur) """

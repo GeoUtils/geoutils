@@ -11,6 +11,26 @@ import numpy as np
 from math import *
 
 
+
+def unique(ar):
+    """
+    Returns the indices of ar that result in a unique array of pairs
+    Input : ar, numpy array of (x,y) coordinates
+    Output : indices, such that ar[indices] is unique
+    """
+    #sort pairs by y then by x
+    order = np.lexsort(ar.T)
+    ar = ar[order]
+    #Compute the x and y difference between 2 neighbors
+#    diff = ar - np.roll(ar,-1,axis=0)  #will return the last occurence
+    diff = ar - np.roll(ar,1,axis=0)   #will return the 1st occurence
+    #Points where any of the difference is different from 0 is unique
+    inds_sorted = np.where(np.any(diff!=0,axis=1))[0]
+    #convert to index of the original array, not sorted
+    inds = order[inds_sorted]
+    return np.sort(inds)
+
+
 def point_inside_polygon(x,y,poly):
     """
     Determine if a point is inside a given polygon or not
@@ -46,7 +66,7 @@ def point_inside_polygon(x,y,poly):
     return inside
 
 
-def points_inside_polygon(x,y,poly):
+def points_inside_polygon(x,y,poly,skip_holes=False):
     """
     Same as point_inside_polygon but x,y can be numpy.arrays containing multiple points
     Return a boolean numpy.array
@@ -57,9 +77,15 @@ def points_inside_polygon(x,y,poly):
     
     p1x,p1y = poly[0]
 
+    if skip_holes==True:
+        vertex = unique(poly)
+    else:
+        vertex = range(n)
+
     #Loop on all sides of the polygon (P1,P2)
-    for i in range(n+1):
-        p2x,p2y = poly[i % n]
+    for i in vertex:
+        p1x,p1y = poly[i % n]        
+        p2x,p2y = poly[(i+1) % n]
 
         candidates = np.where((y > min(p1y,p2y)) & (y <= max(p1y,p2y)) & (x <= max(p1x,p2x)))[0]
         
@@ -72,7 +98,7 @@ def points_inside_polygon(x,y,poly):
                 else:
                     inside[candidates] = np.where(x[candidates]<=xinters,1-inside[candidates],inside[candidates])
     
-        p1x,p1y = p2x,p2y
+#        p1x,p1y = p2x,p2y
 
     inside = np.bool8(inside)
     return inside

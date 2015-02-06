@@ -31,21 +31,27 @@ def unique(ar):
     return np.sort(inds)
 
 
-def point_inside_polygon(x,y,poly):
+def point_inside_polygon(x,y,poly,skip_holes=True):
     """
     Determine if a point is inside a given polygon or not
     x,y : f, coordinates of the point to test
     poly : list or np array,  list of (x,y) pairs defining the vertex of the polygon
+    skip_holes : bool, contours with holes (e.g RGI) have extra segments to link the main contour to holes. These segments must be ignored; when a point is not unique, i.e contour is closed, it is skipped. (Default, set to False)
 
     Algorithm : this function counts the number of times that the half-line (D) parallel to the x-axis and reaching (x,y) from the right crosses a side of the polygon
     """
     n = len(poly)
     inside =False
 
-    p1x,p1y = poly[0]
+    if skip_holes==True:
+        vertex = unique(poly)
+    else:
+        vertex = range(n)
+
     #Loop on all sides of the polygon (P1,P2)
-    for i in range(n+1):
-        p2x,p2y = poly[i % n]
+    for i in vertex:
+        p1x,p1y = poly[i % n]        
+        p2x,p2y = poly[(i+1) % n]
 
         #if the next 2 conditions not verified, (D) won't cross (P1,P2)
         if y > min(p1y,p2y):

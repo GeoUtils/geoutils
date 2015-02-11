@@ -10,6 +10,8 @@ from copy import deepcopy
 import mpl_toolkits.basemap.pyproj as pyproj
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path
+from matplotlib import cm
+from matplotlib.collections import PatchCollection
 
 #Personal libraries
 import georaster as raster
@@ -252,6 +254,46 @@ Additionally, a number of instances are available in the class.
         ax.set_ylim(ymin,ymax)
 
 
+    def draw_by_attr(self,attr,cmap=cm.jet,indices='all',**kwargs):
+        """
+        Plot the geometries defined in the vector file
+        Inputs :
+        - indices : indices of the features to plot (Default is 'all')
+        **kwargs : any optional argument accepted by the matplotlib.patches.PathPatch class, e.g.
+            - edgecolor : mpl color spec, or None for default, or ‘none’ for no color
+            - facecolor : mpl color spec, or None for default, or ‘none’ for no color
+            - lw : linewidth, float or None for default
+            - alpha : transparency, float or None
+        """
+
+        if not hasattr(self,'features'):
+            print "You must run self.read() first"
+            return 0
+
+        if indices=='all':
+            indices = range(len(self.features))
+        elif isinstance(indices,numbers.Number):
+            indices = [indices,] #create list if only one value
+
+        #create a collection of patches
+        patches = []
+        for k in indices:
+            sh = Shape(self.features[k])
+            patches.append(PathPatch(sh.path))
+
+        p = PatchCollection(patches, cmap=cmap)
+        p.set_array(np.array(self.fields.values[attr])) #set colors
+
+        #Plot
+        ax = pl.gca()
+        ax.add_collection(p)
+        cb = pl.colorbar(p)
+        cb.set_label(attr)
+        xmin, xmax,ymin,ymax = self.extent
+        ax.set_xlim(xmin,xmax)
+        ax.set_ylim(ymin,ymax)
+
+
     def crop(self,xmin,xmax,ymin,ymax):
         """
         Filter all features that are outside the rectangle defined by the corners xmin, xmax, ymin, ymax.
@@ -324,7 +366,7 @@ Additionally, a number of instances are available in the class.
         median = []
         std = []
         count = []
-        from time import time
+
         for feat in self.features[indices]:
 
             #Read feature geometry and reproject to raster projection
@@ -336,16 +378,12 @@ Additionally, a number of instances are available in the class.
             xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
             inds = np.where((X>=xmin) & (X<=xmax) & (Y>=ymin) & (Y<=ymax))
 
-            t2 = time()
-            
             #Select data within the feature
             inside = geo.points_inside_polygon(X[inds],Y[inds],sh.vertices,skip_holes=False)
             inside = np.where(inside)
             inside_i = inds[0][inside]
             inside_j = inds[1][inside]
 
-            t3 = time()
-            print "Loop : %f" %(t3-t2)
             data = img.r[inside_i,inside_j]
 
             #Filter no data values

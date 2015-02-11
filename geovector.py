@@ -8,6 +8,7 @@ import numpy as np
 import numbers
 from copy import deepcopy
 import mpl_toolkits.basemap.pyproj as pyproj
+from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 
 #Personal libraries
@@ -216,11 +217,16 @@ Additionally, a number of instances are available in the class.
         self.features = np.array(features)
 
 
-    def plot(self,indices='all',**kwargs):
+    def draw(self,indices='all',**kwargs):
         """
         Plot the geometries defined in the vector file
         Inputs :
         - indices : indices of the features to plot (Default is 'all')
+        **kwargs : any optional argument accepted by the matplotlib.patches.PathPatch class, e.g.
+            - edgecolor : mpl color spec, or None for default, or ‘none’ for no color
+            - facecolor : mpl color spec, or None for default, or ‘none’ for no color
+            - lw : linewidth, float or None for default
+            - alpha : transparency, float or None
         """
 
         if not hasattr(self,'features'):
@@ -234,28 +240,12 @@ Additionally, a number of instances are available in the class.
 
         for feat in self.features[indices]:
             sh = Shape(feat)
-            sh.plot()
+            sh.draw(**kwargs)
 
-
-    def fill(self,indices='all'):
-        """
-        Display the filled geometries defined in the vector file
-        Inputs :
-        - indices : indices of the features to plot (Default is 'all')
-        """
-
-        if not hasattr(self,'features'):
-            print "You must run self.read() first"
-            return 0
-
-        if indices=='all':
-            indices = range(len(self.features))
-        elif isinstance(indices,numbers.Number):
-            indices = [indices,] #create list if only one value
-
-        for feat in self.features[indices]:
-            sh = Shape(feat)
-            sh.fill()
+        ax = pl.gca()
+        xmin, xmax,ymin,ymax = self.extent
+        ax.set_xlim(xmin,xmax)
+        ax.set_ylim(ymin,ymax)
 
 
     def crop(self,xmin,xmax,ymin,ymax):
@@ -402,19 +392,23 @@ class Shape():
                     self.points.y.append(y)
                     self.path = Path(vertices,codes)
 
+        def draw(self, **kwargs):
+            """
+            Draw the shape using the matplotlib.path.Path and matplotlib.patches.PathPatch classes
+            **kwargs : any optional argument accepted by the matplotlib.patches.PathPatch class, e.g.
+            - edgecolor : mpl color spec, or None for default, or ‘none’ for no color
+            - facecolor : mpl color spec, or None for default, or ‘none’ for no color
+            - lw : linewidth, float or None for default
+            - alpha : transparency, float or None
+            """
+            
+            #Create patch and get extent
+            patch = PathPatch(self.path,**kwargs)
+            xmin,xmax,ymin,ymax = self.extent
 
-        def plot(self):
-
-            for k in xrange(len(self.points.x)):
-                pl.plot(self.points.x[k],self.points.y[k],'b')
-
-
-        def fill(self):
-
-            if len(self.points.x)>1:
-                pl.fill(self.points.x[0],self.points.y[0],'b')
-
-                for k in xrange(1,len(self.points.x)):
-                    pl.fill(self.points.x[k],self.points.y[k],'w')
-            else:
-                pl.fill(self.points.x,self.points.y,'b')
+#            fig = pl.figure()
+#            ax=fig.add_subplot(111)
+            ax = pl.gca()
+            ax.add_patch(patch)
+            ax.set_xlim(xmin,xmax)
+            ax.set_ylim(ymin,ymax)

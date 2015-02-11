@@ -1,12 +1,18 @@
 #!/usr/bin/env python
 #coding=utf-8
 
+#Python libraries
 from osgeo import ogr, osr, gdal
 import matplotlib.pyplot as pl
-import georaster as raster
 import numpy as np
 import numbers
 from copy import deepcopy
+import mpl_toolkits.basemap.pyproj as pyproj
+from matplotlib.path import Path
+
+#Personal libraries
+import georaster as raster
+
 
 """
 geovector.py
@@ -21,17 +27,16 @@ There are two classes available:
     MultiLayerVector     --  For loading datasets that contain multiple layers 
                             of data (TO IMPLEMENT)
 
-Each class works as a wrapper to the GDAL API. A vector dataset can be loaded
-into a class without needing to load the actual data as well, which is useful
+       The class works as a wrapper to the OGR API. A vector dataset can be loaded
+into a class without needing to load the actual data, which is useful
 for querying geo-referencing information without memory overheads.
 
-Both classes provide comprehensive georeferencing information access via
-the following attributes:
+The following attributes are available :
 
-    class.ds    :   the GDAL handle to the dataset, which provides access to 
-                    all GDAL functions, e.g. GetProjection, GetGeoTransform.
+    class.ds    :   the OGR handle to the dataset, which provides access to 
+                    all OGR functions, e.g. GetLayer, GetLayerCount...
                         More information on API:
-                        http://www.gdal.org/classGDALDataset.html
+                        http://gdal.org/python/osgeo.ogr.DataSource-class.html
 
     class.srs   :   an OGR Spatial Reference object representation of the 
                     dataset.
@@ -44,8 +49,17 @@ the following attributes:
     class.extent :  tuple of the corners of the dataset in native coordinate
                     system, as (left,right,bottom,top).
 
-Additionally, georeferencing information which requires calculation 
-can be accessed via a number of functions available in the class.
+    class.extent :  tuple of the corners of the dataset in native coordinate
+                    system, as (left,right,bottom,top).
+
+    class.layer : an OGR Layer object, see http://gdal.org/python/osgeo.ogr.Layer-class.html
+
+    class.fields : an OGR field, i.e attributes to each feature. 
+                   - fields.name contains the name of the fields
+                   - fields.dtype contains the Numpy.dtype of the fields
+                   - fields.value contains the value of the fields in form of a dictionary
+
+Additionally, a number of instances are available in the class. 
 
 
 
@@ -78,8 +92,42 @@ class SingleLayerVector:
         
         Parameters:
             ds_filename : filename of the dataset to import
-            
+
+       The class works as a wrapper to the OGR API. A vector dataset can be loaded
+into a class without needing to load the actual data, which is useful
+for querying geo-referencing information without memory overheads.
+
+The following attributes are available :
+
+    class.ds    :   the OGR handle to the dataset, which provides access to 
+                    all OGR functions, e.g. GetLayer, GetLayerCount...
+                        More information on API:
+                        http://gdal.org/python/osgeo.ogr.DataSource-class.html
+
+    class.srs   :   an OGR Spatial Reference object representation of the 
+                    dataset.
+                        More information on API:
+                        http://www.gdal.org/classOGRSpatialReference.html
+
+    class.proj  :   a pyproj coordinate conversion function between the 
+                    dataset coordinate system and lat/lon.
+
+    class.extent :  tuple of the corners of the dataset in native coordinate
+                    system, as (left,right,bottom,top).
+
+    class.extent :  tuple of the corners of the dataset in native coordinate
+                    system, as (left,right,bottom,top).
+
+    class.layer : an OGR Layer object, see http://gdal.org/python/osgeo.ogr.Layer-class.html
+
+    class.fields : an OGR field, i.e attributes to each feature. 
+                   - fields.name contains the name of the fields
+                   - fields.dtype contains the Numpy.dtype of the fields
+                   - fields.value contains the value of the fields in form of a dictionary
+
+Additionally, a number of instances are available in the class. 
         """
+
         self._load_ds(ds_filename)     
 
 
@@ -99,47 +147,76 @@ class SingleLayerVector:
         if self.ds is None:
             print 'Could not open %s' % (ds_filename)
 
-        self.lyr = self.ds.GetLayer()
-#        self.ds.lyr = []
-#        for i in xrange(self.ds.GetLayerCount()):
-#            self.ds.lyr.append(self.ds.GetLayerByIndex)
-
-        self.srs = self.lyr.GetSpatialRef()
-        self.extent = self.lyr.GetExtent()
-
-        layerDefinition = self.lyr.GetLayerDefn()
+        #Get layer
+        self.layer = self.ds.GetLayer()
         
-        fields = []
-        dtypes = []
+        # For multiple layers
+        # self.ds.layer = []
+        # for i in xrange(self.ds.GetLayerCount()):
+        # self.ds.layer.append(self.ds.GetLayerByIndex)
+
+        # Get georeferencing infos
+        self.srs = self.layer.GetSpatialRef()
+        self.extent = self.layer.GetExtent()
+
+        # Get layer fields name and type
+        layerDefinition = self.layer.GetLayerDefn()
+        
+        fields = Object()
+        fields.name = []
+        fields.dtype = []
+        fields._size = []
         for i in range(layerDefinition.GetFieldCount()):
-            fields.append(layerDefinition.GetFieldDefn(i).GetName())
+            fields.name.append(layerDefinition.GetFieldDefn(i).GetName())
             fieldTypeCode = layerDefinition.GetFieldDefn(i).GetType()
-            dtypes.append(layerDefinition.GetFieldDefn(i).GetFieldTypeName(fieldTypeCode))
-        """
-        feat = self.lyr.GetFeature(0)
-        fields = feat.keys()
-        
-        dtypes = []
-        for i in xrange(len(fields)):
-            dt = feat.GetFieldType(fields[i])
-            dtypes.append(gdal.GetDataTypeName(dt))
-        """
+            fields.dtype.append(layerDefinition.GetFieldDefn(i).GetFieldTypeName(fieldTypeCode))
+            fields._size.append(layerDefinition.GetFieldDefn(i).GetWidth())
+
+        # Convert types to Numpy dtypes
+        # see http://www.gdal.org/ogr__core_8h.html#a787194bea637faf12d61643124a7c9fc
+        # IntegerList, RealList, StringList, Integer64List not implemented yet.
+        OGR2np = {'Integer':'i4','Real':'d','String':'S','Binary':'S','Date':'S','Time':'S','DateTime':'S','Integer64':'i8'}
+
+        for k in xrange(len(fields.dtype)):
+            dtype = OGR2np[fields.dtype[k]]
+            if dtype=='S':
+                dtype+=str(fields._size[k])
+            fields.dtype[k] = dtype
+
         self.fields = fields
-        self.dtypes = dtypes
+        
+        self.proj = pyproj.Proj(self.srs.ExportToProj4())
+
         
     def read(self):
         """
-        Read features defined in the vector file.
+        Load features and fields values defined in the vector file.
         Features filtered before are not read.
         """
 
+        nFeat = self.layer.GetFeatureCount()
+        
+        #Initialize dictionnary containing fields data
+        self.fields.values = {}
+        for k in xrange(len(self.fields.name)):
+            f = self.fields.name[k]
+            dtype = self.fields.dtype[k]
+            self.fields.values[f] = np.empty(nFeat,dtype=dtype)
+
         features = []
-        for i in xrange(self.lyr.GetFeatureCount()):
-            features.append(self.lyr.GetNextFeature())
+        for i in xrange(nFeat):
+            #read each feature
+            feat = self.layer.GetNextFeature()
+            features.append(feat)
+
+            #read each field associated to the feature
+            for f in self.fields.name:
+                self.fields.values[f][i] = feat.GetField(f)
+
         self.features = np.array(features)
 
 
-    def plot(self,indices='all'):
+    def plot(self,indices='all',**kwargs):
         """
         Plot the geometries defined in the vector file
         Inputs :
@@ -203,8 +280,10 @@ class SingleLayerVector:
 #        poly=ogr.CreateGeometryFromWkt(wkt)
         
         #Filter features outside the polygon
-        self.lyr.SetSpatialFilter(poly)
-
+        self.layer.SetSpatialFilter(poly)
+        
+        #update attributes
+        self.extent = poly.GetEnvelope()
     
     def crop2raster(self,rasterfile):
         """
@@ -256,7 +335,9 @@ class SingleLayerVector:
         median = []
         std = []
         count = []
+
         for feat in self.features[indices]:
+
             sh = Shape(feat)
             geom = deepcopy(sh.geom)
             geom.Transform(coordTrans)
@@ -271,7 +352,7 @@ class SingleLayerVector:
                 if point.Within(geom):
                     inside_i.append(i)
                     inside_j.append(j)
-            
+
             data = img.r[inside_i,inside_j]
             data = data[~np.isnan(data)]
             if nodata!=None:
@@ -300,6 +381,8 @@ class Shape():
             self.points = Object()
             self.points.x = []
             self.points.y = []
+            vertices = []
+            codes = []
             if self.geom.GetGeometryCount()>0:
                 for i in xrange(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
@@ -307,9 +390,18 @@ class Shape():
                     for j in xrange(poly.GetPointCount()):
                         x.append(poly.GetX(j))
                         y.append(poly.GetY(j))
-                 
+                        vertices.append([poly.GetX(j),poly.GetY(j)])
+                        if j==0:
+                            codes.append(Path.MOVETO)
+                        elif j==poly.GetPointCount()-1:
+                            codes.append(Path.CLOSEPOLY)
+                        else:
+                            codes.append(Path.LINETO)
+
                     self.points.x.append(x)
                     self.points.y.append(y)
+                    self.path = Path(vertices,codes)
+
 
         def plot(self):
 

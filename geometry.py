@@ -22,8 +22,8 @@ def unique(ar):
     order = np.lexsort(ar.T)
     ar = ar[order]
     #Compute the x and y difference between 2 neighbors
-#    diff = ar - np.roll(ar,-1,axis=0)  #will return the last occurence
-    diff = ar - np.roll(ar,1,axis=0)   #will return the 1st occurence
+    diff = ar - np.roll(ar,-1,axis=0)  #will return the last occurence
+#    diff = ar - np.roll(ar,1,axis=0)   #will return the 1st occurence
     #Points where any of the difference is different from 0 is unique
     inds_sorted = np.where(np.any(diff!=0,axis=1))[0]
     #convert to index of the original array, not sorted
@@ -47,11 +47,11 @@ def point_inside_polygon(x,y,poly,skip_holes=True):
         vertex = unique(poly)
     else:
         vertex = range(n)
-
+    segments = []
     #Loop on all sides of the polygon (P1,P2)
     for i in vertex:
-        p1x,p1y = poly[i % n]        
-        p2x,p2y = poly[(i+1) % n]
+        p1x,p1y = poly[(i-1) % n]        
+        p2x,p2y = poly[(i) % n]
 
         #if the next 2 conditions not verified, (D) won't cross (P1,P2)
         if y > min(p1y,p2y):
@@ -66,10 +66,11 @@ def point_inside_polygon(x,y,poly,skip_holes=True):
                     
                     #We count intersection for the half-line coming from the right, all intersection points to the left of (x,y) are not taken into account
                     if p1x == p2x or x <= xinters:
+                        segments.append(i)
                         inside = not inside
         p1x,p1y = p2x,p2y
 
-    return inside
+    return inside, segments
 
 
 def points_inside_polygon(x,y,poly,skip_holes=False):

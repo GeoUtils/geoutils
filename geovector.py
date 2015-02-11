@@ -13,7 +13,7 @@ from matplotlib.path import Path
 
 #Personal libraries
 import georaster as raster
-
+import geometry as geo
 
 """
 geovector.py
@@ -216,6 +216,10 @@ Additionally, a number of instances are available in the class.
 
         self.features = np.array(features)
 
+    def FeatureCount():
+        
+        return self.layer.GetFeatureCount()
+
 
     def draw(self,indices='all',**kwargs):
         """
@@ -301,48 +305,60 @@ Additionally, a number of instances are available in the class.
         - indices : indices of the features to compute (Default is 'all')
         """
 
-        #Dimension vector file to raster size
-#        self.crop2raster(rasterfile)
-#        self.read()
-
         # Read raster coordinates
         img = raster.SingleBandRaster(rasterfile)
         X, Y = img.coordinates()
-#        left, right, bottom, up = img.extent
-#        xsize, ysize = img.get_pixel_size()
-#        X, Y = np.meshgrid(np.arange(left,right,abs(xsize)),np.arange(bottom,up,abs(ysize)))
 
-        # Reproject vector geometry to same projection as raster
-        sourceSR = self.srs
-        targetSR = img.srs
+        # Reproject raster to vector projection system
+        print "Reproject raster to vector projection system"
+        sourceSR = img.srs
+        targetSR = self.srs
+
         coordTrans = osr.CoordinateTransformation(sourceSR,targetSR)
+        Xorig = np.ravel(np.array(X,ndmin=1))   
+        Yorig = np.ravel(np.array(Y,ndmin=1))
+        shape = X.shape
+        
+        res = coordTrans.TransformPoints(zip(Xorig,Yorig))
+        res=np.array(res)
+        Xdest = res[:,0]
+        Ydest = res[:,1]
+        Xdest = Xdest.reshape(shape)
+        Ydest = Ydest.reshape(shape)
+
+#        coordTrans = osr.CoordinateTransformation(self.srs,img.srs)
+#        Xdest, Ydest = X, Y
 
         if indices=='all':
             indices = range(len(self.features))
         elif isinstance(indices,numbers.Number):
             indices = [indices,] #create list if only one value
 
+        print "Loop on all features"
         median = []
         std = []
         count = []
-
+        from time import time
         for feat in self.features[indices]:
 
-            sh = Shape(feat)
-            geom = deepcopy(sh.geom)
-            geom.Transform(coordTrans)
-            xmin, xmax, ymin, ymax = geom.GetEnvelope()
+            sh = Shape(feat,load_data=True)
+#            sh.geom.Transform(coordTrans)
+#            sh.read()
+#            geom = deepcopy(sh.geom)
+#            geom.Transform(coordTrans)
+            xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
 
-            inds = np.where((X>=xmin) & (X<=xmax) & (Y>=ymin) & (Y<=ymax))
+            inds = np.where((Xdest>=xmin) & (Xdest<=xmax) & (Ydest>=ymin) & (Ydest<=ymax))
 
-            inside_i, inside_j = [], []
-            for i,j in np.transpose(inds):
-                point = ogr.Geometry(ogr.wkbPoint)
-                point.AddPoint(X[i,j], Y[i,j])
-                if point.Within(geom):
-                    inside_i.append(i)
-                    inside_j.append(j)
+            t2 = time()
 
+            inside = geo.points_inside_polygon(Xdest[inds],Ydest[inds],sh.vertices,skip_holes=False)
+            inside = np.where(inside)
+            inside_i = inds[0][inside]
+            inside_j = inds[1][inside]
+
+            t3 = time()
+            print "Loop : %f" %(t3-t2)
             data = img.r[inside_i,inside_j]
             data = data[~np.isnan(data)]
             if nodata!=None:
@@ -362,35 +378,14 @@ Additionally, a number of instances are available in the class.
 
 class Shape():
 
-        def __init__(self,feature):
+        def __init__(self,feature,load_data=True):
             
             self.feature=feature
-            self.geom = feature.GetGeometryRef()
-            self.extent = self.geom.GetEnvelope()
-            
-            self.points = Object()
-            self.points.x = []
-            self.points.y = []
-            vertices = []
-            codes = []
-            if self.geom.GetGeometryCount()>0:
-                for i in xrange(self.geom.GetGeometryCount()):
-                    poly = self.geom.GetGeometryRef(i)
-                    x, y = [], []
-                    for j in xrange(poly.GetPointCount()):
-                        x.append(poly.GetX(j))
-                        y.append(poly.GetY(j))
-                        vertices.append([poly.GetX(j),poly.GetY(j)])
-                        if j==0:
-                            codes.append(Path.MOVETO)
-                        elif j==poly.GetPointCount()-1:
-                            codes.append(Path.CLOSEPOLY)
-                        else:
-                            codes.append(Path.LINETO)
+            self.geom = deepcopy(feature.GetGeometryRef())
 
-                    self.points.x.append(x)
-                    self.points.y.append(y)
-                    self.path = Path(vertices,codes)
+            if load_data==True:
+                self.read()
+
 
         def draw(self, **kwargs):
             """
@@ -412,3 +407,25 @@ class Shape():
             ax.add_patch(patch)
             ax.set_xlim(xmin,xmax)
             ax.set_ylim(ymin,ymax)
+
+
+        def read(self):
+
+            self.extent = self.geom.GetEnvelope()
+
+            vertices = []
+            codes = []
+            if self.geom.GetGeometryCount()>0:
+                for i in xrange(self.geom.GetGeometryCount()):
+                    poly = self.geom.GetGeometryRef(i)
+                    for j in xrange(poly.GetPointCount()):
+                        vertices.append([poly.GetX(j),poly.GetY(j)])
+                        if j==0:
+                            codes.append(Path.MOVETO)
+                        elif j==poly.GetPointCount()-1:
+                            codes.append(Path.CLOSEPOLY)
+                        else:
+                            codes.append(Path.LINETO)
+
+                self.vertices = vertices
+                self.path = Path(vertices,codes)

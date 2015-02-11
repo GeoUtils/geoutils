@@ -279,6 +279,7 @@ Additionally, a number of instances are available in the class.
         #update attributes
         self.extent = poly.GetEnvelope()
     
+
     def crop2raster(self,rasterfile):
         """
         Filter all features that are outside the raster extent.
@@ -298,6 +299,7 @@ Additionally, a number of instances are available in the class.
         # Crop
         self.crop(left,right,bottom,up)
 
+
     def zonal_statistics(self,rasterfile,indices='all',nodata=None):
         """
         Compute statistics of the data in rasterfile for each feature in self.
@@ -309,26 +311,10 @@ Additionally, a number of instances are available in the class.
         img = raster.SingleBandRaster(rasterfile)
         X, Y = img.coordinates()
 
-        # Reproject raster to vector projection system
-        print "Reproject raster to vector projection system"
-        sourceSR = img.srs
-        targetSR = self.srs
+        # Coordinate transformation from vector to raster projection system
+        coordTrans = osr.CoordinateTransformation(self.srs,img.srs)
 
-        coordTrans = osr.CoordinateTransformation(sourceSR,targetSR)
-        Xorig = np.ravel(np.array(X,ndmin=1))   
-        Yorig = np.ravel(np.array(Y,ndmin=1))
-        shape = X.shape
-        
-        res = coordTrans.TransformPoints(zip(Xorig,Yorig))
-        res=np.array(res)
-        Xdest = res[:,0]
-        Ydest = res[:,1]
-        Xdest = Xdest.reshape(shape)
-        Ydest = Ydest.reshape(shape)
-
-#        coordTrans = osr.CoordinateTransformation(self.srs,img.srs)
-#        Xdest, Ydest = X, Y
-
+        #Select only indices specified by user
         if indices=='all':
             indices = range(len(self.features))
         elif isinstance(indices,numbers.Number):
@@ -341,18 +327,19 @@ Additionally, a number of instances are available in the class.
         from time import time
         for feat in self.features[indices]:
 
-            sh = Shape(feat,load_data=True)
-#            sh.geom.Transform(coordTrans)
-#            sh.read()
-#            geom = deepcopy(sh.geom)
-#            geom.Transform(coordTrans)
-            xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
+            #Read feature geometry and reproject to raster projection
+            sh = Shape(feat,load_data=False)
+            sh.geom.Transform(coordTrans)
+            sh.read()
 
-            inds = np.where((Xdest>=xmin) & (Xdest<=xmax) & (Ydest>=ymin) & (Ydest<=ymax))
+            #Look only for points within the box of the feature
+            xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
+            inds = np.where((X>=xmin) & (X<=xmax) & (Y>=ymin) & (Y<=ymax))
 
             t2 = time()
-
-            inside = geo.points_inside_polygon(Xdest[inds],Ydest[inds],sh.vertices,skip_holes=False)
+            
+            #Select data within the feature
+            inside = geo.points_inside_polygon(X[inds],Y[inds],sh.vertices,skip_holes=False)
             inside = np.where(inside)
             inside_i = inds[0][inside]
             inside_j = inds[1][inside]
@@ -360,10 +347,13 @@ Additionally, a number of instances are available in the class.
             t3 = time()
             print "Loop : %f" %(t3-t2)
             data = img.r[inside_i,inside_j]
+
+            #Filter no data values
             data = data[~np.isnan(data)]
             if nodata!=None:
                 data = data[data!=nodata]
 
+            #Compute statistics
             if len(data)>0:
                 median.append(np.median(data))
                 std.append(np.std(data))
@@ -380,8 +370,8 @@ class Shape():
 
         def __init__(self,feature,load_data=True):
             
-            self.feature=feature
-            self.geom = deepcopy(feature.GetGeometryRef())
+            self.feature = feature
+            self.geom = deepcopy(feature.GetGeometryRef()) #deepcopy otherwise the feature can be modified
 
             if load_data==True:
                 self.read()
@@ -410,6 +400,9 @@ class Shape():
 
 
         def read(self):
+            """
+            Read shape extent and vertices
+            """
 
             self.extent = self.geom.GetEnvelope()
 
@@ -427,5 +420,5 @@ class Shape():
                         else:
                             codes.append(Path.LINETO)
 
-                self.vertices = vertices
-                self.path = Path(vertices,codes)
+                self.vertices = vertices   #list of vertices
+                self.path = Path(vertices,codes)  #used for plotting

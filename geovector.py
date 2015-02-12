@@ -403,6 +403,36 @@ Additionally, a number of instances are available in the class.
 
         return np.array(median), np.array(std), np.array(count)
 
+    def create_mask(self,raster):
+
+        # Open the raster file
+        x_res, y_res = raster.get_pixel_size()
+        xsize, ysize = raster.r.shape
+        x_min, x_max, y_min, y_max = raster.extent
+    
+
+        # Create memory target raster
+        target_ds = gdal.GetDriverByName('MEM').Create('', xsize, ysize, 1, gdal.GDT_Byte)
+        target_ds.SetGeoTransform((
+                x_min, x_res, 0,
+                y_max, 0, y_res,
+                ))
+    
+        # Make the target raster have the same projection as the source raster
+        target_ds.SetProjection(raster.srs.ExportToWkt())
+
+        # Rasterize
+        err = gdal.RasterizeLayer(target_ds, [1], self.layer,burn_values=[255])
+        if err != 0:
+            raise Exception("error rasterizing layer: %s" % err)
+
+        # Read mask raster as arrays
+        bandmask = target_ds.GetRasterBand(1)
+        datamask = bandmask.ReadAsArray(0, 0, xsize, ysize)
+
+        return datamask
+
+
 
 class Shape():
 

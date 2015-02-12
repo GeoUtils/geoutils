@@ -12,6 +12,7 @@ from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 from matplotlib import cm
 from matplotlib.collections import PatchCollection
+from matplotlib import colors
 
 #Personal libraries
 import georaster as raster
@@ -143,8 +144,12 @@ Additionally, a number of instances are available in the class.
 
     def _load_ds(self,ds_filename):
         """ Load link to data file and set up georeferencing """
-        self.ds_file = ds_filename
-        self.ds = ogr.Open(ds_filename)
+        if isinstance(ds_filename,str):
+            self.ds_file = ds_filename
+            self.ds = ogr.Open(ds_filename,0) #read-only
+        elif isinstance(ds_filename,ogr.DataSource):
+            self.ds = ds_filename
+            self.ds_file = ds_filename.GetName()
 
         # Check to see if shapefile is found.
         if self.ds is None:
@@ -218,16 +223,69 @@ Additionally, a number of instances are available in the class.
 
         self.features = np.array(features)
 
-    def FeatureCount():
-        
+
+    def FeatureCount(self):
+        """
+        Return the number of features in self
+        """
+
         return self.layer.GetFeatureCount()
 
 
-    def draw(self,indices='all',**kwargs):
+    def reproject(self,target_srs):
+        """
+        Return a new SingleLayerVector object with features reprojected according to target_srs.
+        """
+        # create the CoordinateTransformation
+        coordTrans = osr.CoordinateTransformation(self.srs, target_srs)
+
+        # create the output layer
+        outDataSet = ogr.GetDriverByName('Memory').CreateDataSource('Reprojected '+self.layer.GetName())
+#        outputShapefile = r'c:\data\spatial\basemap_4326.shp'
+#        outDataSet = driver.CreateDataSource(outputShapefile)
+        outLayer = outDataSet.CreateLayer(self.layer.GetName(), target_srs,geom_type=ogr.wkbMultiPolygon)
+
+        # add fields
+        inLayerDefn = self.layer.GetLayerDefn()
+        for i in range(0, inLayerDefn.GetFieldCount()):
+            fieldDefn = inLayerDefn.GetFieldDefn(i)
+            outLayer.CreateField(fieldDefn)
+
+        # get the output layer's feature definition
+        outLayerDefn = outLayer.GetLayerDefn()
+
+        # loop through the input features
+        self.layer.GetFeatureCount()  #to read from beginning again
+        inFeature = self.layer.GetNextFeature()
+        while inFeature:
+            # get the input geometry
+            geom = inFeature.GetGeometryRef()
+            # reproject the geometry
+            geom.Transform(coordTrans)
+            # create a new feature
+            outFeature = ogr.Feature(outLayerDefn)
+            # set the geometry and attribute
+            outFeature.SetGeometry(geom)
+            # set the Spatial Reference
+            geom.AssignSpatialReference(target_srs)
+        
+            for i in range(0, outLayerDefn.GetFieldCount()):
+                outFeature.SetField(outLayerDefn.GetFieldDefn(i).GetNameRef(), inFeature.GetField(i))
+            # add the feature to the shapefile
+            outLayer.CreateFeature(outFeature)
+            # destroy the features and get the next input feature
+            outFeature.Destroy()
+            inFeature.Destroy()
+            inFeature = self.layer.GetNextFeature()
+
+        return SingleLayerVector(outDataSet)
+
+
+    def draw(self,subset='all',extent='default',**kwargs):
         """
         Plot the geometries defined in the vector file
         Inputs :
-        - indices : indices of the features to plot (Default is 'all')
+        - subset : indices of the features to plot (Default is 'all')
         **kwargs : any optional argument accepted by the matplotlib.patches.PathPatch class, e.g.
             - edgecolor : mpl color spec, or None for default, or ‘none’ for no color
             - facecolor : mpl color spec, or None for default, or ‘none’ for no color
@@ -239,26 +297,29 @@ Additionally, a number of instances are available in the class.
             print "You must run self.read() first"
             return 0
 
-        if indices=='all':
-            indices = range(len(self.features))
-        elif isinstance(indices,numbers.Number):
-            indices = [indices,] #create list if only one value
+        if subset=='all':
+            subset = range(len(self.features))
+        elif isinstance(subset,numbers.Number):
+            subset = [subset,] #create list if only one value
 
-        for feat in self.features[indices]:
+        for feat in self.features[subset]:
             sh = Shape(feat)
             sh.draw(**kwargs)
 
         ax = pl.gca()
-        xmin, xmax,ymin,ymax = self.extent
+        if extent=='default':
+            xmin, xmax,ymin,ymax = self.extent
+        else:
+            xmin, xmax, ymin, ymax = extent
         ax.set_xlim(xmin,xmax)
         ax.set_ylim(ymin,ymax)
 
 
-    def draw_by_attr(self,attr,cmap=cm.jet,indices='all',**kwargs):
+    def draw_by_attr(self,attr,cmap=cm.jet,subset='all',vmin='default',vmax='default',**kwargs):
         """
         Plot the geometries defined in the vector file
         Inputs :
-        - indices : indices of the features to plot (Default is 'all')
+        - subset : indices of the features to plot (Default is 'all')
         **kwargs : any optional argument accepted by the matplotlib.patches.PathPatch class, e.g.
             - edgecolor : mpl color spec, or None for default, or ‘none’ for no color
             - facecolor : mpl color spec, or None for default, or ‘none’ for no color
@@ -270,19 +331,32 @@ Additionally, a number of instances are available in the class.
             print "You must run self.read() first"
             return 0
 
-        if indices=='all':
-            indices = range(len(self.features))
-        elif isinstance(indices,numbers.Number):
-            indices = [indices,] #create list if only one value
+        if subset=='all':
+            subset = range(len(self.features))
+        elif isinstance(subset,numbers.Number):
+            subset = [subset,] #create list if only one value
 
         #create a collection of patches
         patches = []
-        for k in indices:
+        for k in subset:
             sh = Shape(self.features[k])
             patches.append(PathPatch(sh.path))
 
-        p = PatchCollection(patches, cmap=cmap)
-        p.set_array(np.array(self.fields.values[attr])) #set colors
+        #remove Nan values
+        values = np.copy(self.fields.values[attr])
+        if vmin=='default':
+            vmin = np.nanmin(values)
+        if vmax=='default':
+            vmax = np.nanmax(values)
+#        p5 = np.percentile(values[~np.isnan(values)],5)
+#        p95 = np.percentile(values[~np.isnan(values)],95)
+        bounds = np.linspace(vmin,vmax,255)
+        norm = colors.BoundaryNorm(bounds, cmap.N)
+        values[np.isnan(values)] = -1e5
+        cmap.set_under('grey')
+
+        p = PatchCollection(patches, cmap=cmap,norm=norm)
+        p.set_array(np.array(values)) #set colors
 
         #Plot
         ax = pl.gca()
@@ -342,11 +416,11 @@ Additionally, a number of instances are available in the class.
         self.crop(left,right,bottom,up)
 
 
-    def zonal_statistics(self,rasterfile,indices='all',nodata=None):
+    def zonal_statistics(self,rasterfile,subset='all',nodata=None):
         """
         Compute statistics of the data in rasterfile for each feature in self.
         Inputs :
-        - indices : indices of the features to compute (Default is 'all')
+        - subset : indices of the features to compute (Default is 'all')
         """
 
         # Read raster coordinates
@@ -356,18 +430,18 @@ Additionally, a number of instances are available in the class.
         # Coordinate transformation from vector to raster projection system
         coordTrans = osr.CoordinateTransformation(self.srs,img.srs)
 
-        #Select only indices specified by user
-        if indices=='all':
-            indices = range(len(self.features))
-        elif isinstance(indices,numbers.Number):
-            indices = [indices,] #create list if only one value
+        #Select only subset specified by user
+        if subset=='all':
+            subset = range(len(self.features))
+        elif isinstance(subset,numbers.Number):
+            subset = [subset,] #create list if only one value
 
         print "Loop on all features"
         median = []
         std = []
         count = []
-
-        for feat in self.features[indices]:
+        frac = []
+        for feat in self.features[subset]:
 
             #Read feature geometry and reproject to raster projection
             sh = Shape(feat,load_data=False)
@@ -396,12 +470,14 @@ Additionally, a number of instances are available in the class.
                 median.append(np.median(data))
                 std.append(np.std(data))
                 count.append(len(data))
+                frac.append(float(len(data))/len(inside_i))
             else:
                 median.append(np.nan)
                 std.append(np.nan)
                 count.append(0)
+                frac.append(0)
 
-        return np.array(median), np.array(std), np.array(count)
+        return np.array(median), np.array(std), np.array(count), np.array(frac)
 
     def create_mask(self,raster):
 
@@ -412,7 +488,7 @@ Additionally, a number of instances are available in the class.
     
 
         # Create memory target raster
-        target_ds = gdal.GetDriverByName('MEM').Create('', xsize, ysize, 1, gdal.GDT_Byte)
+        target_ds = gdal.GetDriverByName('MEM').Create('', ysize, xsize, 1, gdal.GDT_Byte)
         target_ds.SetGeoTransform((
                 x_min, x_res, 0,
                 y_max, 0, y_res,
@@ -428,7 +504,7 @@ Additionally, a number of instances are available in the class.
 
         # Read mask raster as arrays
         bandmask = target_ds.GetRasterBand(1)
-        datamask = bandmask.ReadAsArray(0, 0, xsize, ysize)
+        datamask = bandmask.ReadAsArray(0, 0, ysize, xsize)
 
         return datamask
 

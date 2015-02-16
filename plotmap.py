@@ -199,7 +199,7 @@ class Map:
 
 
 
-    def plot_data(self,data,vmin='min',vmax='max',cmap='cm.jet'):
+    def plot_data(self,data,vmin='min',vmax='max',cmap='jet'):
         """
         Basic function to plot a dataset with minimum and maximum values.
 
@@ -210,7 +210,7 @@ class Map:
             data : georaster object of data to plot
             vmin : 'min' or minimum value to plot
             vmax : 'max' or maximum value to plot
-            cmap : colormap, in format cn.<name>
+            cmap : str, matplotlib colormap
 
         """
 
@@ -264,7 +264,8 @@ class Map:
 
 
 
-    def plot_scale(self,length,xpos=0.8,ypos=0.12):
+
+    def plot_scale(self,length,xpos=0.8,ypos=0.12,color='k'):
         """
         Plot a scale bar on the figure.
 
@@ -272,6 +273,7 @@ class Map:
             length : float, length of scale bar in map units.
             xpos : float, x position of scale in axes coordinates
             ypos : float, y position of scale in axes coordinates
+            color : colour of scale bar
 
         Returns:
             scale object
@@ -281,10 +283,11 @@ class Map:
         xloc = lonll + xpos * (lonur-lonll)
         yloc = latll + ypos * (latur-latll)
         scale = self.map.drawmapscale(xloc,yloc,(lonur+lonll)/2,
-                         (latur+latll)/2,length,
+                         (latur+latll)/2,length,fontcolor=color,
                          barstyle='fancy',fontsize=rcParams['font.size'])
 
         return scale
+
 
 
 

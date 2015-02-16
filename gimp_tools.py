@@ -21,7 +21,8 @@ import os
 import georaster
 
 GIMP_dem_prefix = 'gimpdem'
-GIMP_mask_prefix = 'GimpIceMask_15m_tile'
+GIMP_ice_prefix = 'GimpIceMask_15m_tile'
+GIMP_ocean_prefix = 'GimpOceanMask_15m_tile'
 # GIMP projection, as shown on GIMP home page
 GIMP_PROJ4 = '+init=EPSG:3413'
 
@@ -68,7 +69,7 @@ def create_gimp_raster(image_path,gimp_extents_csv,outfile,clean=False,
         outfile : str, path to the output GeoTiff file
         clean : True/False, default True, clean up after merging operation.
         verbose: True/False, default False, display coordinate conversions
-        tile_type : str, 'dem' or 'mask'
+        tile_type : str, 'dem' or 'mask' (ice mask) or 'ocean' (ocean mask)
 
     Returns:
         Creates the outfile.
@@ -80,7 +81,9 @@ def create_gimp_raster(image_path,gimp_extents_csv,outfile,clean=False,
     if tile_type == 'dem':
         GIMP_FILE_PREFIX = GIMP_dem_prefix
     elif tile_type == 'mask':
-        GIMP_FILE_PREFIX = GIMP_mask_prefix
+        GIMP_FILE_PREFIX = GIMP_ice_prefix
+    elif tile_type == 'ocean':
+        GIMP_FILE_PREFIX = GIMP_ocean_prefix
 
     # Name of temporary file to merge to
     GIMP_TMP_MERGE = 'temporary_merge.tif'
@@ -150,13 +153,13 @@ def create_gimp_raster(image_path,gimp_extents_csv,outfile,clean=False,
                      '_' + str(c) + '.tif '
 
     # Do the merge
-    command = 'gdal_merge.py -o ' + GIMP_DIR + GIMP_TMP_MERGE + \
-              ' -ps 30 30 ' + build_from
+    command = 'gdal_merge.py -ot "Int16" -o ' + GIMP_DIR + GIMP_TMP_MERGE + \
+              ' ' + build_from
     print "**** COMMAND : %s" %command; os.system(command)
 
     # Create the merged GIMP tile for the input img at appropriate resolution
     xres, yres = in_image.get_pixel_size()
-    command = "gdalwarp -t_srs '" + in_image.srs.ExportToProj4() + "' -te " + str(ex[0]) + " " + \
+    command = "gdalwarp -t_srs '" + in_image.srs.ExportToProj4() + "' -te " + str(ex[0]-15000) + " " + \
                 str(ex[2]) + " " + str(ex[1]) + \
                 " " + str(ex[3]) + " -tr " + str(xres) + " " + str(yres) +\
                 " " + GIMP_DIR + GIMP_TMP_MERGE + " " + outfile

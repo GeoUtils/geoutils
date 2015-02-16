@@ -10,10 +10,19 @@ to add different types of layers and information.
 The methods are broadly arranged in the expected calling sequence. See 
 method docstrings for further information.
 
+Once the Map object has been created calling further methods of the object are
+not necessary.
+
 For a practical example look at landsat_velocities/PlotFunctions.plot_map().
+
+E.g. Add axes to subplot of existing figure:
+>>> fig = plt.figure(figsize=(3,7))
+>>> ax1 = plt.subplot(211)
+>>> map1 = plotmap.Map(dsfile='myfile.tif', fig=fig, ax=ax)
 
 Author : Andrew Tedstone
 Date: October 2014
+
 """
 
 import numpy as np

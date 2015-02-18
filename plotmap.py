@@ -10,20 +10,30 @@ to add different types of layers and information.
 The methods are broadly arranged in the expected calling sequence. See 
 method docstrings for further information.
 
+Once the Map object has been created calling further methods of the object are
+not necessary.
+
 For a practical example look at landsat_velocities/PlotFunctions.plot_map().
+
+E.g. Add axes to subplot of existing figure:
+>>> fig = plt.figure(figsize=(3,7))
+>>> ax1 = plt.subplot(211)
+>>> map1 = plotmap.Map(dsfile='myfile.tif', fig=fig, ax=ax)
 
 Author : Andrew Tedstone
 Date: October 2014
+
 """
 
 import numpy as np
-import pylab as pl
+import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib import colors
 from mpl_toolkits.basemap import Basemap
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import warnings
 from matplotlib.colors import LightSource
+from matplotlib import rcParams
 
 import georaster
 
@@ -34,7 +44,8 @@ class Map:
     fig = None
     extent = None
 
-    def __init__(self,ds_file=None,extent=None,lon_0=None):
+    def __init__(self,ds_file=None,extent=None,lon_0=None,figsize=None,
+        fig=None,ax=None):
         """
 
         Create the Map object, which itself creates a Basemap instance.
@@ -49,6 +60,15 @@ class Map:
                       lat_upper_right)
             lon_0 : float, longitude of origin
 
+        Creation of the matplotlib figure:
+        There are two options.
+        1) Create figure automatically. 
+                If desired, set figsize=(x,y).
+                Leave fig=None and ax=None.
+        2) Use existing axes.
+                set fig=figure_obj and ax=ax_obj.
+                figsize is ignored.
+
         E.g.
         >>> mymap = Map(ds_file='myim.tif')
 
@@ -57,8 +77,19 @@ class Map:
 
         """
 
-        # Create figure
-        self.fig = pl.figure()
+        # Use handle to existing figure
+        if fig <> None and ax <> None:
+            self.fig = fig
+            self.ax = ax
+        # Create figure of specified size
+        elif figsize <> None:
+            self.fig = plt.figure(figsize=figsize)
+            self.ax = plt.subplot(111)
+        # Create figure at system default size
+        else:
+            self.fig = plt.figure()
+            self.ax = plt.subplot(111)
+
 
         # Get basic georeferencing info for map
         # From a geoTIFF
@@ -105,10 +136,10 @@ class Map:
         # Reduce image resolution
         if coarse <> False:
             if type(coarse) == int:
-                bg.r = bg_im.r[::coarse,::coarse]
+                bg.r = bg.r[::coarse,::coarse]
 
         bg.r = np.where(bg.r == 0,np.nan,bg.r)   #remove black color
-        pl.imshow(bg.r,cmap=cm.Greys_r,
+        plt.imshow(bg.r,cmap=cm.Greys_r,
                   extent=bg.get_extent_projected(self.map),
                   interpolation='nearest')
 
@@ -132,7 +163,7 @@ class Map:
             
         ls = LightSource(azdeg=0,altdeg=180)
         rgb = ls.shade(dem.r,cmap=cm.Greys_r)  
-        pl.imshow(rgb,extent=dem.get_extent_projected(self.map),
+        plt.imshow(rgb,extent=dem.get_extent_projected(self.map),
             interpolation='nearest')
 
 
@@ -172,7 +203,7 @@ class Map:
             except NameError: 
                 cmap.set_over(color)      #color is str, e.g red, white...
 
-        pl.imshow(mask.r,extent=mask.get_extent_projected(self.map),
+        plt.imshow(mask.r,extent=mask.get_extent_projected(self.map),
                   cmap=cmap,vmin=-1,vmax=0,interpolation='nearest',alpha=alpha)
 
 
@@ -181,7 +212,7 @@ class Map:
         """
         Basic function to plot a dataset with minimum and maximum values.
 
-        In many cases you will be better off calling pl.imshow yourself
+        In many cases you will be better off calling plt.imshow yourself
         instead.
 
         Arguments:
@@ -201,17 +232,19 @@ class Map:
             cmap = cm.Blues
             bounds = [0,5,10,15,20,30,40,80,120,200]
             norm = colors.BoundaryNorm(bounds, cmap.N)
-            pl.imshow(data.r,extent=data.get_extent_projected(self.map),
+            plt.imshow(data.r,extent=data.get_extent_projected(self.map),
                 cmap=cmap,
                 vmin=0,norm=norm,interpolation='nearest',alpha=1)
         # Continuous colormap option
         else:
-            pl.imshow(data.r,extent=data.get_extent_projected(self.map),
-                cmap=pl.get_cmap(cmap),
+            cmap = eval(cmap)
+            plt.imshow(data.r,extent=data.get_extent_projected(self.map),
+                cmap=cmap,
                 vmin=vmin,vmax=vmax,interpolation='nearest',alpha=1)
 
 
-    def geo_ticks(self,mstep,pstep):
+
+    def geo_ticks(self,mstep,pstep,rotate_parallels=False):
         """
         Add geographic (latlon) ticks to plot.
 
@@ -225,45 +258,75 @@ class Map:
         m1 = int(lonur/mstep+1)*mstep
         p0 = int(latll/pstep)*pstep
         p1 = int(latur/pstep+1)*pstep
-        self.map.drawparallels(np.arange(p0,p1,pstep),labels=[1,0,0,0],
-            linewidth=0)
+        
+        parallels = self.map.drawparallels(np.arange(p0,p1,pstep),labels=[1,0,0,0],
+            linewidth=0.3,zorder=1000)
+        if rotate_parallels == True:
+            # Rotate text labels for parallels to save space
+            for k,p in parallels.iteritems():
+                # p[1][0] is a text instance
+                item = p[1][0]
+                item.set_rotation('vertical')
+        
         self.map.drawmeridians(np.arange(m0,m1,mstep),labels=[0,0,0,1],
-            linewidth=0)
+            linewidth=0.5,zorder=1000)
 
 
 
-    def plot_scale(self,length,color='k'):
+
+    def plot_scale(self,length,xpos=0.8,ypos=0.12,color='k'):
         """
         Plot a scale bar on the figure.
 
         Arguments:
-            length : float, length of scale bar in map units/
+            length : float, length of scale bar in map units.
+            xpos : float, x position of scale in axes coordinates
+            ypos : float, y position of scale in axes coordinates
+            color : colour of scale bar
+
+        Returns:
+            scale object
 
         """
         lonll, lonur, latll, latur = self.extent
-        xloc = lonll + 0.85*(lonur-lonll)
-        yloc = latll + 0.93*(latur-latll)
-        self.map.drawmapscale(xloc,yloc,(lonur+lonll)/2,(latur+latll)/2,length,
-                         barstyle='fancy',fontcolor=color)
+        xloc = lonll + xpos * (lonur-lonll)
+        yloc = latll + ypos * (latur-latll)
+        scale = self.map.drawmapscale(xloc,yloc,(lonur+lonll)/2,
+                         (latur+latll)/2,length,fontcolor=color,
+                         barstyle='fancy',fontsize=rcParams['font.size'])
+
+        return scale
 
 
 
-    def plot_colorbar(self,label=None):
+
+    def plot_colorbar(self,label=None,extend='neither',ticks=None):
         """
         Draw colorbar of the same height as the figure.
 
         Arguments:
             label : str, text to label colorbar with
+            extend : 'neither', 'both'
+            ticks : None (automatic ticks) or list of tick positions
+
+        Returns:
+            Colorbar object.
 
         """
-        ax = self.fig.gca()   #get axis properties
+        ax = self.ax   #get axis properties
         divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        cb = pl.colorbar(cax=cax)
+        cax = divider.append_axes("right", size="5%", pad=0.1)
+        if isinstance(ticks,list):
+            cb = plt.colorbar(cax=cax, extend=extend,drawedges=False,
+                ticks=ticks)
+        else:
+            cb = plt.colorbar(cax=cax, extend=extend,drawedges=False)
         if label != None:
             cb.set_label(label)
         cb.set_alpha(1)  #no transparency
         cb.draw_all()
+
+        return cb
 
 
 

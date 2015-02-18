@@ -605,7 +605,7 @@ class SingleBandRaster(__Raster):
             self.r = self.read_single_band(band)
 
         # Or load just a subset region
-        elif isinstance(load_data,tuple):
+        elif isinstance(load_data,tuple) or isinstance(load_data,list):
             if len(load_data) == 4:
                 (self.r,self.extent) = self.read_single_band_subset(load_data,
                                         latlon=latlon,extent=True,band=band)
@@ -808,7 +808,7 @@ class MultiBandRaster(__Raster):
 
 
 
-def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None):
+def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None,mask=None):
     """ Save a GeoTIFF.
     
     Inputs:
@@ -818,6 +818,8 @@ def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None):
         One of proj4 or wkt :
             proj4 : a proj4 string
             wkt : a WKT projection string
+
+    -999 is specified as the NoData value.
 
     Outputs:
         A GeoTiff named outfile.
@@ -860,8 +862,13 @@ def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None):
     if nbands > 1:
         for band in range(1,nbands+1):
             dst_ds.GetRasterBand(band).WriteArray(raster[band-1]) 
+            if mask <> None:
+                dst_ds.GetRasterBand(band).GetMaskBand().WriteArray(mask)
     else:
         dst_ds.GetRasterBand(1).WriteArray(raster)
+        dst_ds.GetRasterBand(1).SetNoDataValue(-999)
+        if mask <> None:
+            dst_ds.GetRasterBand(1).GetMaskBand().WriteArray(mask)
 
     # Close data set
     dst_ds = None

@@ -281,11 +281,13 @@ Additionally, a number of instances are available in the class.
         return SingleLayerVector(outDataSet)
 
 
-    def draw(self,subset='all',extent='default',**kwargs):
+    def draw(self,subset='all',extent='default',map_obj=None,**kwargs):
         """
         Plot the geometries defined in the vector file
         Inputs :
         - subset : indices of the features to plot (Default is 'all')
+        - extent : xmin, xmax, ymin, ymax (Default is self.extent)
+        - map_obj : Basemap object, used to plot on a map
         **kwargs : any optional argument accepted by the matplotlib.patches.PathPatch class, e.g.
             - edgecolor : mpl color spec, or None for default, or ‘none’ for no color
             - facecolor : mpl color spec, or None for default, or ‘none’ for no color
@@ -304,7 +306,10 @@ Additionally, a number of instances are available in the class.
 
         for feat in self.features[subset]:
             sh = Shape(feat)
-            sh.draw(**kwargs)
+            if map_obj==None:
+                sh.draw(**kwargs)
+            else:
+                sh.draw_on_map(map_obj,**kwargs)
 
         ax = pl.gca()
         if extent=='default':
@@ -508,6 +513,27 @@ Additionally, a number of instances are available in the class.
 
         return datamask
 
+    def get_extent_projected(self,pyproj_obj):
+        """ Return vector extent in a projected coordinate system.
+
+        This is particularly useful for converting vector extent to the 
+        coordinate system of a Basemap instance.
+
+        Parameters:
+            pyproj_obj : A pyproj instance (such as a Basemap instance) of the
+                system to convert into.
+
+        Returns:
+            (left,right,bottom,top)
+
+        """
+        xll,xur,yll,yur = self.extent
+
+        left,bottom = pyproj_obj(xll,yll)
+        right,top = pyproj_obj(xur,yur)
+        return (left,right,bottom,top)
+
+
 
 
 class Shape():
@@ -565,4 +591,36 @@ class Shape():
                             codes.append(Path.LINETO)
 
                 self.vertices = vertices   #list of vertices
+                self.codes = codes
                 self.path = Path(vertices,codes)  #used for plotting
+
+        def draw_on_map(self,m, **kwargs):
+            """
+            Draw the shape using the matplotlib.path.Path and matplotlib.patches.PathPatch classes
+            **kwargs : any optional argument accepted by the matplotlib.patches.PathPatch class, e.g.
+            - edgecolor : mpl color spec, or None for default, or ‘none’ for no color
+            - facecolor : mpl color spec, or None for default, or ‘none’ for no color
+            - lw : linewidth, float or None for default
+            - alpha : transparency, float or None
+            """
+            
+            #Convert coordinates to Basemap coordinates
+            vertices = []
+            for vertice in self.vertices:
+                x,y = vertice
+                vertices.append(m(x,y))
+
+            #create patch
+            path = Path(vertices,self.codes)
+            patch = PathPatch(path,**kwargs)
+
+            #Get extent
+            xmin,xmax,ymin,ymax = self.extent
+            xmin, ymin = m(xmin,ymin)
+            xmax, ymax = m(xmax,ymax)
+
+            #plot
+            ax = pl.gca()
+            ax.add_patch(patch)
+            ax.set_xlim(xmin,xmax)
+            ax.set_ylim(ymin,ymax)

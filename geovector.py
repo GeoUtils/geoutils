@@ -13,6 +13,8 @@ from matplotlib.path import Path
 from matplotlib import cm
 from matplotlib.collections import PatchCollection
 from matplotlib import colors
+from scipy import ndimage
+from skimage import morphology
 
 #Personal libraries
 import georaster as raster
@@ -196,7 +198,7 @@ Additionally, a number of instances are available in the class.
         self.proj = pyproj.Proj(self.srs.ExportToProj4())
 
         
-    def read(self):
+    def read(self,subset='all'):
         """
         Load features and fields values defined in the vector file.
         Features filtered before are not read.
@@ -211,15 +213,29 @@ Additionally, a number of instances are available in the class.
             dtype = self.fields.dtype[k]
             self.fields.values[f] = np.empty(nFeat,dtype=dtype)
 
-        features = []
-        for i in xrange(nFeat):
-            #read each feature
-            feat = self.layer.GetNextFeature()
-            features.append(feat)
+        if subset!='all':
+            if isinstance(subset,numbers.Number):
+                subset = [subset,] #create list if only one value
 
-            #read each field associated to the feature
-            for f in self.fields.name:
-                self.fields.values[f][i] = feat.GetField(f)
+        features = []
+        if subset=='all':
+            for i in xrange(nFeat):
+                #read each feature
+                feat = self.layer.GetNextFeature()
+                features.append(feat)
+
+                #read each field associated to the feature
+                for f in self.fields.name:
+                    self.fields.values[f][i] = feat.GetField(f)
+        else:
+            for i in subset:
+                #read each feature
+                feat = self.layer.GetFeature(i)
+                features.append(feat)
+
+                #read each field associated to the feature
+                for f in self.fields.name:
+                    self.fields.values[f][i] = feat.GetField(f)
 
         self.features = np.array(features)
 
@@ -624,3 +640,78 @@ class Shape():
             ax.add_patch(patch)
             ax.set_xlim(xmin,xmax)
             ax.set_ylim(ymin,ymax)
+
+
+        def rasterize(self,srs,pixel_size):
+            
+            # Create a memory raster to rasterize into.
+            xmin, xmax, ymin, ymax = self.extent
+            xsize = int((xmax-xmin)/pixel_size)
+            ysize = int((ymax-ymin)/pixel_size)
+            target_ds = gdal.GetDriverByName('MEM').Create( '', xsize, ysize, bands=1,eType=gdal.GDT_Byte)
+            target_ds.SetGeoTransform((xmin,pixel_size,0,ymax,0,-pixel_size))
+            target_ds.SetProjection(srs.ExportToWkt())
+
+            # Create a memory layer to rasterize from.
+            input_raster = ogr.GetDriverByName('Memory').CreateDataSource('')
+            layer = input_raster.CreateLayer('poly', srs=srs)
+            
+            # Add polygon
+            feat = ogr.Feature(layer.GetLayerDefn())
+            feat.SetGeometry(self.geom)
+            layer.CreateFeature(feat)
+        
+            # Rasterize
+            err = gdal.RasterizeLayer(target_ds, [1], layer,burn_values=[255])
+
+            if err != 0:
+                raise Exception("error rasterizing layer: %s" % err)
+
+            # Read mask raster as arrays
+            bandmask = target_ds.GetRasterBand(1)
+            mask = bandmask.ReadAsArray(0, 0, xsize, ysize)
+
+            trans = target_ds.GetGeoTransform()
+            shape = (xsize, ysize)
+            x = np.array(np.linspace(trans[0],(trans[0]+(xsize*trans[1])),xsize).tolist() * ysize).reshape(shape)
+            y = np.array(np.linspace(trans[3],(trans[3]+(ysize*trans[5])),ysize).tolist() * xsize).reshape(shape[::-1]).T
+            
+            return mask, x, y
+
+
+        def centerline(self,srs,pixel_size):
+            """
+            Create a raster of the shape and display to help user drawing the centerline
+            srs : OSR SpatialReference, used for rasterization
+            pixel_size : size of the raster pixel
+            Outputs :
+                x and y coordinates of the user clicks
+            """
+
+            # Create a binary raster of the shape
+            mask, xx, yy = self.rasterize(srs,pixel_size)
+
+            # Fill small holes on mask, e.g supraglacial lakes
+            mask_fill = ndimage.binary_opening(mask,iter=2)
+            
+            # Compute the skeleton of the mask to help user
+            skel = morphology.skeletonize(mask_fill > 0).astype('float32')
+            skel[skel==0] = np.nan
+
+            # Show mask and skeleton
+            pl.imshow(mask_fill,cmap=pl.get_cmap('Greys_r'))
+            pl.imshow(skel)
+
+            #User click to create profile
+            print("Select your profile")
+            coords=pl.ginput(n=0,timeout=0)
+            
+            #Convert to list of indices
+            coords = np.int32(coords)
+            coords = np.transpose(coords)
+            coords = (coords[0],coords[1])
+
+            return xx[coords], yy[coords]
+
+                      
+                      

@@ -501,6 +501,9 @@ Additionally, a number of instances are available in the class.
         return np.array(median), np.array(std), np.array(count), np.array(frac)
 
     def create_mask(self,raster):
+        """
+        Return a mask (Byte) of the polygons in self, in the Spatial Reference and resolution of raster
+        """
 
         # Open the raster file
         x_res, y_res = raster.get_pixel_size()
@@ -528,6 +531,59 @@ Additionally, a number of instances are available in the class.
         datamask = bandmask.ReadAsArray(0, 0, ysize, xsize)
 
         return datamask
+
+
+    def create_mask_attr(self,raster,attr):
+        """
+        Return a raster (Float32) containing the values of attr for each polygon in self, in the Spatial Reference and resolution of raster
+        """
+
+        # Open the raster file
+        x_res, y_res = raster.get_pixel_size()
+        xsize, ysize = raster.r.shape
+        x_min, x_max, y_min, y_max = raster.extent
+    
+
+        # Create memory target raster
+        target_ds = gdal.GetDriverByName('MEM').Create('', ysize, xsize, 1, gdal.GDT_Float32)
+        target_ds.SetGeoTransform((
+                x_min, x_res, 0,
+                y_max, 0, y_res,
+                ))
+
+        # Make the target raster have the same projection as the source raster
+        target_ds.SetProjection(raster.srs.ExportToWkt())
+
+        #loop on features
+        for feat in self.features:
+
+            # Create a memory layer to rasterize from.
+            input_raster = ogr.GetDriverByName('Memory').CreateDataSource('')
+            layer = input_raster.CreateLayer('poly', srs=self.srs)
+
+            # Add polygon
+    #        feat = ogr.Feature(layer.GetLayerDefn())
+    #        feat.SetGeometry(feature.GetGeometryRef())
+            layer.CreateFeature(feat)
+
+            # Rasterize
+            err = gdal.RasterizeLayer(target_ds, [1], layer,burn_values=[feat.GetField(attr)])
+
+            if err != 0:
+                raise Exception("error rasterizing layer: %s" % err)
+
+            # Read mask raster as arrays
+            bandmask = target_ds.GetRasterBand(1)
+            datamask = bandmask.ReadAsArray(0, 0, ysize, xsize)
+
+
+            # import pylab as pl
+            # pl.imshow(datamask)
+            # pl.colorbar()
+            # pl.show()
+
+        return datamask
+
 
     def get_extent_projected(self,pyproj_obj):
         """ Return vector extent in a projected coordinate system.

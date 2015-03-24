@@ -594,6 +594,7 @@ class Shape():
 
             vertices = []
             codes = []
+
             if self.geom.GetGeometryCount()>0:
                 for i in xrange(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
@@ -605,10 +606,17 @@ class Shape():
                             codes.append(Path.CLOSEPOLY)
                         else:
                             codes.append(Path.LINETO)
+            else:
+                for j in xrange(self.geom.GetPointCount()):
+                    vertices.append([self.geom.GetX(j),self.geom.GetY(j)])
+                    if j==0:
+                        codes.append(Path.MOVETO)
+                    else:
+                        codes.append(Path.LINETO)
 
-                self.vertices = vertices   #list of vertices
-                self.codes = codes
-                self.path = Path(vertices,codes)  #used for plotting
+            self.vertices = vertices   #list of vertices
+            self.codes = codes
+            self.path = Path(vertices,codes)  #used for plotting
 
         def draw_on_map(self,m, **kwargs):
             """

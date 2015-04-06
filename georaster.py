@@ -453,13 +453,15 @@ class __Raster:
             (x,y) : tuple, containing 1-d numpy array for each of x and y.
             
         """
-        trans = self.ds.GetGeoTransform()
+
+        xmin,xmax,ymin,ymax = self.extent
+        nx, ny = self.r.shape
         if self.ds.RasterCount > 1:
             shape = self.r.shape[0:2]
         else:
             shape = self.r.shape
-        x = np.array(np.linspace(trans[0],(trans[0]+(self.ds.RasterXSize*trans[1])),self.ds.RasterXSize).tolist() * self.ds.RasterYSize).reshape(shape)
-        y = np.array(np.linspace(trans[3],(trans[3]+(self.ds.RasterYSize*trans[5])),self.ds.RasterYSize).tolist() * self.ds.RasterXSize).reshape(shape[::-1]).T
+        x = np.array(np.linspace(xmin,xmax,nx).tolist() * ny).reshape(shape)
+        y = np.array(np.linspace(ymin,ymax,ny).tolist() * nx).reshape(shape[::-1]).T
         return (x,y)
 
 

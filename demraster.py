@@ -112,7 +112,11 @@ class DEMRaster(__Raster):
         else:
             print 'Warning : load_data argument not understood. No data loaded.'
 
-   
+        #Set nodata values to Nan
+        band=self.ds.GetRasterBand(1)
+        nodata=band.GetNoDataValue()
+        self.r[self.r==nodata] = np.nan
+
         
     def find_value_at_coords(self,x,y,**kwargs):
         """ (DEPRECATED) Extract the pixel value at the specified coordinates.
@@ -165,5 +169,6 @@ class DEMRaster(__Raster):
         aspect = np.arctan2(g2,g1)
 
         return slope, aspect
+
 
 

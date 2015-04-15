@@ -47,6 +47,7 @@ import subprocess
 import xml.etree.ElementTree as etree
 import re
 import mpl_toolkits.basemap.pyproj as pyproj
+import matplotlib.pyplot as pl
 
 from georaster import __Raster
 import geometry as geo
@@ -171,4 +172,68 @@ class DEMRaster(__Raster):
         return slope, aspect
 
 
+
+    def shaded_relief(self,cmap=pl.get_cmap('Greys'),alpha=1,azdeg=100,altdeg=65,aspect='default'):
+        """
+        Function to plot a shaded relief of the DEM
+        cmap : object of class Colormap
+        alpha : f, 0 to 1, transparency
+        azdeg : f, azimuth (measured clockwise from south) of the light source in degress for the shaded relief
+        altdeg : f, altitude (measured up from the plane of the surface) of the light source in degrees
+        aspect : f, imshow window aspect, default is set to have orthonormal axis (meters not degree)
+        """
+
+        #set aspect so that lat/lon spacing are equal
+        if aspect=='default':
+            lat0 = self.extent[2]
+            aspect = 1/np.cos(np.abs(lat0)*np.pi/180)
+
+        
+        #compute shaded image
+        x, y = np.gradient(self.r)  
+        slope = np.pi/2. - np.arctan(np.sqrt(x*x + y*y))  
+        aspect = np.arctan2(-x, y)  
+        azrad = azdeg*np.pi / 180.  
+        altituderad = altdeg*np.pi / 180.  
+        shaded = np.sin(altituderad) * np.sin(slope) + np.cos(altituderad) * np.cos(slope)* np.cos(azrad - aspect)  
+        rgb=255*(shaded + 1)/2  
+
+        #plot
+        pl.imshow(rgb,extent=self.extent,interpolation='bilinear',cmap=cmap,alpha=alpha,aspect=aspect)
+
+        #other option (more time/memory consuming)
+        # from matplotlib.colors import LightSource
+        # ls = LightSource(azdeg=azdeg,altdeg=altdeg)
+        # rgb = ls.shade(self.r,cmap=cm)  
+        # pl.imshow(rgb,extent=self.extent,interpolation='bilinear',aspect=aspect,alpha=alpha)
+    
+            
+
+    def plot_contours(self,levels='default',c='k',alpha=1,aspect='default'):
+        """
+        Function to plot a shaded relief of the DEM
+        cmap : object of class Colormap
+        alpha : f, 0 to 1, transparency
+        azdeg : f, azimuth (measured clockwise from south) of the light source in degress for the shaded relief
+        altdeg : f, altitude (measured up from the plane of the surface) of the light source in degrees
+        aspect : f, imshow window aspect, default is set to have orthonormal axis (meters not degree)
+        """
+
+        #set aspect so that lat/lon spacing are equal
+        if aspect=='default':
+            lat0 = self.extent[2]
+            aspect = 1/np.cos(np.abs(lat0)*np.pi/180)
+
+        #default level values
+        if levels=='default':
+            min = np.percentile(self.r,10)
+            max = np.nanmax(self.r)
+            levels = np.linspace(min,max,10)
+            levels = levels//100*100
+
+        #plot
+        CS = pl.contour(self.r,levels,extent=self.extent,colors=c,alpha=alpha,aspect=aspect)
+        pl.clabel(CS, inline=0, fontsize=10,fmt="%.0f")
+        
+            
 

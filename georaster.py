@@ -496,47 +496,25 @@ class __Raster:
         return xres, yres
 
 
-    def reproject(self,target_srs,nx,ny,xmin,ymax,xres,yres,dtype=gdal.GDT_Float32,nodata=None):
+    def reproject(self,target_srs,nx,ny,xmin,ymax,xres,yres,dtype=gdal.GDT_Float32,nodata=None,interp_type=gdal.GRA_NearestNeighbour):
         """
-        A sample function to reproject and resample a GDAL dataset from within 
-        Python. The idea here is to reproject from one system to another, as well
-        as to change the pixel size. The procedure is slightly long-winded, but
-        goes like this:
-
-        1. Set up the two Spatial Reference systems.
-        2. Open the original dataset, and get the geotransform
-        3. Calculate bounds of new geotransform by projecting the UL corners 
-        4. Calculate the number of pixels with the new projection & spacing
-        5. Create an in-memory raster dataset
-        6. Perform the projection
+        Reproject and resample a GDAL dataset into another spatial reference system.
+        Input arguments :
+        - target_srs : Sptial Reference System to reproject to
+        - nx, ny : int, size of the output raster
+        - xmin, ymax : f, coordinates of the corners
+        - xres, yres : f, pixel size
+        - dtype : gdal.GTD_* data type (e.g GDT_Byte, GDT_Int32, GDT_Float64...) default is GDT_Float32
+        - nodata : f, no data value in the input raster, default is None
+        - interp_type : gdal.GRA_* interpolation algorithm (e.g GRA_NearestNeighbour, GRA_Bilinear, GRA_CubicSpline...), default is GRA_NearestNeighbour
         """
-#        tx = osr.CoordinateTransformation (self.srs, target_srs )
-        # Up to here, all  the projection have been defined, as well as a 
-        # transformation from the from to the  to :)
-        # We now open the dataset
-#        g = gdal.Open ( dataset )
-        # Get the Geotransform vector
-#        geo_t = g.GetGeoTransform ()
-#        x_size = g.RasterXSize # Raster xsize
-#        y_size = g.RasterYSize # Raster ysize
-#        x_size, y_size = self.r.shape()
-        # Work out the boundaries of the new dataset in the target projection
-#        xmin, xmax, ymin, ymax = self.extent
-#        llx, lly = tx.TransformPoint(xmin,ymin)[:2]
-#        urx, ury = tx.TransformPoint(xmax,ymax)[:2]
-    
-        # Now, we create an in-memory raster
+        # Create an in-memory raster
         mem_drv = gdal.GetDriverByName( 'MEM' )
-        # The size of the raster is given the new projection and pixel spacing
-        # Using the values we calculated above. Also, setting it to store one band
-        # and to use Float32 data type.
-#        nx = int(urx - llx)/xsize
-#        ny = int(ury - lly)/ysize
         target_ds = mem_drv.Create('', nx, ny, 1, dtype)
-        # Calculate the new geotransform
+
+        # Set the new geotransform
         new_geo = ( xmin, xres, 0, \
                     ymax, 0    , yres )
-        # Set the geotransform
         target_ds.SetGeoTransform(new_geo)
         target_ds.SetProjection(target_srs.ExportToWkt())
     
@@ -546,7 +524,7 @@ class __Raster:
             inBand.SetNoDataValue(nodata)
     
         # Perform the projection/resampling 
-        res = gdal.ReprojectImage(self.ds, target_ds, self.srs.ExportToWkt(), target_srs.ExportToWkt(), gdal.GRA_NearestNeighbour)
+        res = gdal.ReprojectImage(self.ds, target_ds, self.srs.ExportToWkt(), target_srs.ExportToWkt(), interp_type)
     
         # Load data
         band = target_ds.GetRasterBand(1)

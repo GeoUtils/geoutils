@@ -318,6 +318,9 @@ class __Raster:
         arr = self.ds.GetRasterBand(band).ReadAsArray(xpx1,ypx1,
                                                       x_offset,y_offset)
 
+        # Update image size
+        self.nx, self.ny = arr.shape
+
         if extent == True:
             # (top left x, w-e px res, 0, top left y, 0, n-s px res)
             trans = self.ds.GetGeoTransform() 
@@ -792,7 +795,7 @@ def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None,mask=No
     """ Save a GeoTIFF.
     
     Inputs:
-        outfile : filename to save image to
+        outfile : filename to save image to, if 'none', returns a memory raster
         raster : nbands x r x c
         geoTransform : tuple (top left x, w-e cell size, 0, top left y, 0, n-s cell size (-ve))
         One of proj4 or wkt :
@@ -825,7 +828,11 @@ def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None,mask=No
         xdim = raster.shape[1]
          
     # Setup geotiff file.
-    driver = gdal.GetDriverByName("GTiff")
+    if outfile!='none':
+        driver = gdal.GetDriverByName("GTiff")
+    else:
+        driver = gdal.GetDriverByName('MEM')
+
     dst_ds = driver.Create(outfile, xdim, ydim, nbands, gdal.GDT_Float32)
     # Top left x, w-e pixel resolution, rotation, top left y, rotation, n-s pixel resolution
     dst_ds.SetGeoTransform(geoTransform)
@@ -850,9 +857,13 @@ def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None,mask=No
         if mask <> None:
             dst_ds.GetRasterBand(1).GetMaskBand().WriteArray(mask)
 
-    # Close data set
-    dst_ds = None
-    return True 
+    if outfile!='none':
+        # Close data set
+        dst_ds = None
+        return True 
+    
+    else:
+        return dst_ds
 
 
 

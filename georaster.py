@@ -141,8 +141,12 @@ class __Raster:
 
     def _load_ds(self,ds_filename):
         """ Load link to data file and set up georeferencing """
-        self.ds_file = ds_filename
-        self.ds = gdal.Open(ds_filename,0)
+        if isinstance(ds_filename,str):  #input arg is file name
+            self.ds_file = ds_filename
+            self.ds = gdal.Open(ds_filename,0)
+        elif isinstance(ds_filename,gdal.Dataset):  #input arg is gdal dataset
+            self.ds = ds_filename
+            self.ds_file = ds_filename.GetDescription()
 
         if self.ds.GetProjection() == '':
             print 'Specified image does not have any associated \

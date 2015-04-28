@@ -216,7 +216,7 @@ class __Raster:
 
 
 
-    def coord_to_px(self,x,y,latlon=False):
+    def coord_to_px(self,x,y,latlon=False,rounded=True):
         """ Convert x,y coordinates into pixel coordinates of raster.
 
         x,y may be either in native coordinate system of raster or lat/lon.
@@ -225,6 +225,7 @@ class __Raster:
             x : float, x coordinate to convert.
             y : float, y coordinate to convert.
             latlon : boolean, default False. Set as True if bounds in lat/lon.
+            rounded : if set to True, return the rounded pixel coordinates, otherwise return the float values
 
         Returns:
             (x_pixel,y_pixel)
@@ -253,8 +254,9 @@ class __Raster:
         nx = self.ds.RasterXSize
         ny = self.ds.RasterYSize
 
-        xPixel = int(round(xPixel))
-        yPixel = int(round(yPixel))
+        if rounded==True:
+            xPixel = int(round(xPixel))
+            yPixel = int(round(yPixel))
 
         xPixel_new = min(xPixel,nx)
         yPixel_new = min(yPixel,ny)

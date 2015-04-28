@@ -420,6 +420,9 @@ class __Raster:
             xo = 1
             yo = 1
 
+        #Make sure coordinates are int
+        xpx = int(xpx)
+        ypx = int(ypx)
 
         # Get values for all bands
         if band == None:

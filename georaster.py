@@ -242,6 +242,10 @@ class __Raster:
         if latlon == True and self.proj <> None:
             x,y = self.proj(x,y)
 
+        # Convert coordinates to numpy array for further calculations
+        x = np.array(x)
+        y = np.array(y)
+
         g0, g1, g2, g3, g4, g5 = self.ds.GetGeoTransform()
         if g2 == 0:
             xPixel = (x - g0) / float(g1)
@@ -250,27 +254,24 @@ class __Raster:
             xPixel = (y*g2 - x*g5 + g0*g5 - g2*g3) / float(g2*g4 - g1*g5)
             yPixel = (x - g0 - xPixel*g1) / float(g2)
 
+        #Round if required
+        if rounded==True:
+            xPixel = np.round(xPixel)
+            yPixel = np.round(yPixel)
+
         # Check that pixel location is not outside image dimensions
         nx = self.ds.RasterXSize
         ny = self.ds.RasterYSize
 
-        if rounded==True:
-            xPixel = int(round(xPixel))
-            yPixel = int(round(yPixel))
-
-        xPixel_new = min(xPixel,nx)
-        yPixel_new = min(yPixel,ny)
-
-        xPixel_new = max(xPixel_new,0)
-        yPixel_new = max(yPixel_new,0)
-
-        if xPixel_new!=xPixel:
-                print "Warning : longitude %f is out of domain for file %s" %(x,self.ds_file)
-                raise ValueError("longitude %f is out of domain for file %s" %(x,self.ds_file))
-
-        if yPixel_new!=yPixel:
-                print "Warning : latitude %f is out of domain for file %s" %(y,self.ds_file)
-                raise ValueError("Warning : latitude %f is out of domain for file %s" %(y,self.ds_file))
+        xPixel_new = np.copy(xPixel)
+        yPixel_new = np.copy(yPixel)
+        xPixel_new[xPixel_new>nx] = nx
+        yPixel_new[yPixel_new>ny] = ny
+        xPixel_new[xPixel_new<0] = 0
+        yPixel_new[yPixel_new<0] = 0
+        
+        if np.any(xPixel_new!=xPixel) or np.any(yPixel_new!=yPixel):
+            print "Warning : some points are out of domain for file %s" %(self.ds_file)
 
         return xPixel_new, yPixel_new
 
@@ -306,7 +307,7 @@ class __Raster:
         # readAsArray implementation.    
         xpx1,ypx1 = self.coord_to_px(left,bottom,latlon=latlon)
         xpx2,ypx2 = self.coord_to_px(right,top,latlon=latlon)
-
+        
         if xpx1 > xpx2:
             xpx1, xpx2 = xpx2, xpx1
         if ypx1 > ypx2:
@@ -321,8 +322,8 @@ class __Raster:
         if y_offset == 0: y_offset = 1
 
         # Read array and return
-        arr = self.ds.GetRasterBand(band).ReadAsArray(xpx1,ypx1,
-                                                      x_offset,y_offset)
+        arr = self.ds.GetRasterBand(band).ReadAsArray(int(xpx1),int(ypx1),
+                                                      int(x_offset),int(y_offset))
 
         # Update image size
         self.nx, self.ny = arr.shape

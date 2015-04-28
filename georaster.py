@@ -331,9 +331,8 @@ class __Raster:
         if extent == True:
             # (top left x, w-e px res, 0, top left y, 0, n-s px res)
             trans = self.ds.GetGeoTransform() 
-            if latlon == True and self.proj <> None:
-                left,top = self.proj(left,top)
-            # (left,right,bottom,top)
+            left = trans[0] + xpx1*trans[1]
+            top = trans[3] + ypx1*trans[5]
             extent = (left, left + x_offset*trans[1], 
                        top + y_offset*trans[5], top)
             return (arr,extent)

@@ -467,13 +467,13 @@ class __Raster:
         """
 
         xmin,xmax,ymin,ymax = self.extent
-        nx, ny = self.r.shape
+        ny, nx = self.r.shape
         if self.ds.RasterCount > 1:
             shape = self.r.shape[0:2]
         else:
             shape = self.r.shape
         x = np.array(np.linspace(xmin,xmax,nx).tolist() * ny).reshape(shape)
-        y = np.array(np.linspace(ymin,ymax,ny).tolist() * nx).reshape(shape[::-1]).T
+        y = np.array(np.linspace(ymax,ymin,ny).tolist() * nx).reshape(shape[::-1]).T
         return (x,y)
 
 

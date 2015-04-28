@@ -549,6 +549,38 @@ class __Raster:
         return data
 
 
+    def interp(self,x,y,order=1,latlon=True):
+        """
+        Interpolate raster at points (x,y). Values are extracted from self.r rather than the file itself, so if changes have been made to self.r, they will apply.
+        x,y may be either in native coordinate system of raster or lat/lon.
+
+        Parameters:
+            x : float or array, x coordinate(s) to convert.
+            y : float or array, y coordinate(s) to convert.
+            order : order of the spline interpolation, default is 1 = bilinear
+            latlon : boolean, default False. Set as True if bounds in lat/lon.
+
+        Returns:
+            z_interp, interpolated raster values, same shape as lon and lat
+        """
+
+        # Get coordinates of the low left corner ( (0,0) if whole raster is loaded, different if not )
+        xpx0, ypx0 = self.coord_to_px(self.extent[0],self.extent[3])
+
+        # Get x,y coordinates in the matrix grid
+        xpx1, ypx1 = self.coord_to_px(x,y,latlon=True,rounded=False)
+        xi = xpx1 - xpx0
+        yi = ypx1 - ypx0
+        print xi, yi
+        #Case coordinates are not an array
+        if np.rank(xi)<1:
+            xi = [xi,]
+            yi = [yi,]
+            
+        #interpolated data
+        z_interp = ndimage.map_coordinates(self.r, [yi, xi],order=order)
+
+        return z_interp
 
 
 

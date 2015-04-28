@@ -116,7 +116,8 @@ class DEMRaster(__Raster):
         #Set nodata values to Nan
         band=self.ds.GetRasterBand(1)
         nodata=band.GetNoDataValue()
-        self.r[self.r==nodata] = np.nan
+        if nodata != None:
+            self.r[self.r==nodata] = np.nan
 
         
     def find_value_at_coords(self,x,y,**kwargs):

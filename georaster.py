@@ -109,6 +109,18 @@ import mpl_toolkits.basemap.pyproj as pyproj
 # See http://trac.osgeo.org/gdal/wiki/PythonGotchas
 gdal.UseExceptions()
 
+"""
+Information on map -> pixel conversion
+
+We use the formulas :
+Xgeo = g0 + Xpixel*g1 + Ypixel*g2
+Ygeo = g3 + Xpixel*g4 + Ypixel*g5
+where g = ds.GetGeoTransform()
+given on http://www.gdal.org/gdal_datamodel.html
+
+(Xgeo, Ygeo) is the position of the upper-left corner of the cell, so the cell center is located at position (Xpixel+0.5,Ypixel+0.5)
+"""
+
 class __Raster:
     """
     Attributes:
@@ -165,6 +177,10 @@ class __Raster:
         self.nx = self.ds.RasterXSize
         self.ny = self.ds.RasterYSize
         
+        #Offset of the first pixel (non-zero if only subset is read)
+        self.x0 = 0
+        self.y0 = 0
+
         self.srs = osr.SpatialReference()
         self.srs.ImportFromWkt(self.ds.GetProjection())
 
@@ -327,6 +343,8 @@ class __Raster:
 
         # Update image size
         self.nx, self.ny = arr.shape
+        self.x0 = int(xpx1)
+        self.y0 = int(ypx1)
 
         if extent == True:
             # (top left x, w-e px res, 0, top left y, 0, n-s px res)
@@ -456,25 +474,41 @@ class __Raster:
 
     
 
-    def coordinates(self):
-        """ Calculate x and y coordinates for every pixel. 
+    def coordinates(self,Xpixels=None,Ypixels=None,latlon=False):
+        """ Calculate projected (or geographic) coordinates for specified pixels.
+        if Xpixels=None and Ypixels=None (default), a grid with all coordinates is returned
+        if latlon=True, return the lat/lon coordinates
 
         Parameters:
-            None.
+            Xpixels : float or array, x-index of the pixels
+            Ypixels : float or array, y-index of the pixels
+            latlon : bool, if set to True, lat/lon coordinates are returned
         Returns:
-            (x,y) : tuple, containing 1-d numpy array for each of x and y.
-            
+            (Xgeo,Ygeo) : tuple, containing 1-d numpy arrays of each coordinates            
         """
+        
+        if np.size(Xpixels) != np.size(Ypixels):
+            print "Xpixels and Ypixels must have the same size"
+            return 1
 
-        xmin,xmax,ymin,ymax = self.extent
-        ny, nx = self.r.shape
-        if self.ds.RasterCount > 1:
-            shape = self.r.shape[0:2]
+        if (Xpixels==None) & (Ypixels==None):
+            Xpixels = np.arange(self.ny)
+            Ypixels = np.arange(self.nx)
+            Xpixels, Ypixels = np.meshgrid(Xpixels,Ypixels)
         else:
-            shape = self.r.shape
-        x = np.array(np.linspace(xmin,xmax,nx).tolist() * ny).reshape(shape)
-        y = np.array(np.linspace(ymax,ymin,ny).tolist() * nx).reshape(shape[::-1]).T
-        return (x,y)
+            Xpixels = np.array(Xpixels)
+            Ypixels = np.array(Ypixels)
+            
+        # + self.x0 is for offset if only a subset ahas been read
+        #coordinates are at upper-left corner, not cell center
+        trans = self.ds.GetGeoTransform()
+        Xgeo = trans[0] + (Xpixels+self.x0)*trans[1] + (Ypixels+self.y0)*trans[2]
+        Ygeo = trans[3] + (Xpixels+self.x0)*trans[4] + (Ypixels+self.y0)*trans[5]
+
+        if latlon==True:
+            Xgeo, Ygeo = self.proj(Xgeo,Ygeo,inverse=True)
+
+        return (Xgeo,Ygeo)
 
 
 
@@ -571,7 +605,7 @@ class __Raster:
         xpx1, ypx1 = self.coord_to_px(x,y,latlon=True,rounded=False)
         xi = xpx1 - xpx0
         yi = ypx1 - ypx0
-        print xi, yi
+
         #Case coordinates are not an array
         if np.rank(xi)<1:
             xi = [xi,]

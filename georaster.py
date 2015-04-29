@@ -587,6 +587,8 @@ class __Raster:
         """
         Interpolate raster at points (x,y). Values are extracted from self.r rather than the file itself, so if changes have been made to self.r, they will apply.
         x,y may be either in native coordinate system of raster or lat/lon.
+        
+        WARNING : For now, values are considered as known at the upper-left corner, whereas it should be in the centre of the cell.
 
         Parameters:
             x : float or array, x coordinate(s) to convert.

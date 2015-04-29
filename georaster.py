@@ -607,9 +607,14 @@ class __Raster:
 
         #Case coordinates are not an array
         if np.rank(xi)<1:
-            xi = [xi,]
-            yi = [yi,]
+            xi = np.array([xi,])
+            yi = np.array([yi,])
             
+        # Check that pixel location is not outside image dimensions
+        if np.any(xi<0) or np.any(xi>=self.ny) or np.any(yi<0) or np.any(y>=self.nx):
+            print('Warning : some of the coordinates are not in dataset extent -> extrapolated value set to 0')
+
+
         #interpolated data
         z_interp = ndimage.map_coordinates(self.r, [yi, xi],order=order)
 

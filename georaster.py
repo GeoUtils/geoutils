@@ -258,9 +258,9 @@ class __Raster:
         if latlon == True and self.proj <> None:
             x,y = self.proj(x,y)
 
-        # Convert coordinates to numpy array for further calculations
-        x = np.array(x)
-        y = np.array(y)
+        # Shift to the center of the pixel
+        x = np.array(x-self.xres/2)
+        y = np.array(y-self.yres/2)
 
         g0, g1, g2, g3, g4, g5 = self.ds.GetGeoTransform()
         if g2 == 0:
@@ -500,10 +500,10 @@ class __Raster:
             Ypixels = np.array(Ypixels)
             
         # + self.x0 is for offset if only a subset ahas been read
-        #coordinates are at upper-left corner, not cell center
+        # coordinates are at centre-cell, therefore the +0.5
         trans = self.ds.GetGeoTransform()
-        Xgeo = trans[0] + (Xpixels+self.x0)*trans[1] + (Ypixels+self.y0)*trans[2]
-        Ygeo = trans[3] + (Xpixels+self.x0)*trans[4] + (Ypixels+self.y0)*trans[5]
+        Xgeo = trans[0] + (Xpixels+self.x0+0.5)*trans[1] + (Ypixels+self.y0+0.5)*trans[2]
+        Ygeo = trans[3] + (Xpixels+self.x0+0.5)*trans[4] + (Ypixels+self.y0+0.5)*trans[5]
 
         if latlon==True:
             Xgeo, Ygeo = self.proj(Xgeo,Ygeo,inverse=True)

@@ -259,8 +259,8 @@ class __Raster:
             x,y = self.proj(x,y)
 
         # Shift to the center of the pixel
-        x = np.array(x-self.xres/2)
-        y = np.array(y-self.yres/2)
+        x = np.array([x-self.xres/2])
+        y = np.array([y-self.yres/2])
 
         g0, g1, g2, g3, g4, g5 = self.ds.GetGeoTransform()
         if g2 == 0:

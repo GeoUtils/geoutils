@@ -128,6 +128,16 @@ class DEMRaster(__Raster):
             lons, lats = self.coordinates()
             self.r += egm96(lons,lats)
 
+        #Compatibility with Topo class
+        lon, lat0 = self.coordinates(np.arange(self.ny),np.repeat((0,),self.ny))
+        lon0, lat = self.coordinates(np.repeat((0,),self.nx),np.arange(self.nx))
+        self.lon = lon
+        self.lat = lat
+        self.topo = self.r
+        self.dlon = self.xres
+        self.dlat = self.yres
+        self.region = self.extent
+
 
     def compute_slope(self):
         '''

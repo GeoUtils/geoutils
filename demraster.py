@@ -119,25 +119,6 @@ class DEMRaster(__Raster):
         if nodata != None:
             self.r[self.r==nodata] = np.nan
 
-        
-    def find_value_at_coords(self,x,y,**kwargs):
-        """ (DEPRECATED) Extract the pixel value at the specified coordinates.
-        
-        This function is maintained for backward compatibility. New code 
-        should call self.value_at_coords() instead.
-
-        ----------------------------------------------------------------------
-
-        Parameters:
-            x : x coordinate in format of target dataset.
-            y : y coordinate in format of target dataset.
-        Returns:
-            float of extracted pixel value.
-        
-        """
-        return self.value_at_coords(x,y,**kwargs)
-                
-
 
     def compute_slope(self):
         '''

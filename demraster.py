@@ -174,22 +174,21 @@ class DEMRaster(__Raster):
 
 
 
-    def shaded_relief(self,cmap=pl.get_cmap('Greys'),alpha=1,azdeg=100,altdeg=65,aspect='default'):
+    def shaded_relief(self,cmap=pl.get_cmap('Greys'),alpha=1,azdeg=100,altdeg=65,asp='default'):
         """
         Function to plot a shaded relief of the DEM
         cmap : object of class Colormap
         alpha : f, 0 to 1, transparency
         azdeg : f, azimuth (measured clockwise from south) of the light source in degress for the shaded relief
         altdeg : f, altitude (measured up from the plane of the surface) of the light source in degrees
-        aspect : f, imshow window aspect, default is set to have orthonormal axis (meters not degree)
+        asp : f, imshow window aspect, default is set to have orthonormal axis (meters not degree)
         """
 
-        #set aspect so that lat/lon spacing are equal
-        if aspect=='default':
+        #set asp so that lat/lon spacing are equal
+        if asp=='default':
             lat0 = self.extent[2]
-            aspect = 1/np.cos(np.abs(lat0)*np.pi/180)
+            asp = 1/np.cos(np.abs(lat0)*np.pi/180)
 
-        
         #compute shaded image
         x, y = np.gradient(self.r)  
         slope = np.pi/2. - np.arctan(np.sqrt(x*x + y*y))  
@@ -200,13 +199,13 @@ class DEMRaster(__Raster):
         rgb=255*(shaded + 1)/2  
 
         #plot
-        pl.imshow(rgb,extent=self.extent,interpolation='bilinear',cmap=cmap,alpha=alpha,aspect=aspect)
+        pl.imshow(rgb,extent=self.extent,interpolation='bilinear',cmap=cmap,alpha=alpha,aspect=asp)
 
         #other option (more time/memory consuming)
         # from matplotlib.colors import LightSource
         # ls = LightSource(azdeg=azdeg,altdeg=altdeg)
         # rgb = ls.shade(self.r,cmap=cm)  
-        # pl.imshow(rgb,extent=self.extent,interpolation='bilinear',aspect=aspect,alpha=alpha)
+        # pl.imshow(rgb,extent=self.extent,interpolation='bilinear',aspect=asp,alpha=alpha)
     
             
 

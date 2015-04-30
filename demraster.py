@@ -51,6 +51,7 @@ import matplotlib.pyplot as pl
 
 from georaster import __Raster
 import geometry as geo
+import EGM96
 
 # By default, GDAL does not raise exceptions - enable them
 # See http://trac.osgeo.org/gdal/wiki/PythonGotchas
@@ -80,7 +81,7 @@ class DEMRaster(__Raster):
     # Numpy array of band data
     r = None
      
-    def __init__(self,ds_filename,load_data=True,latlon=True,band=1):
+    def __init__(self,ds_filename,load_data=True,latlon=True,band=1,ref='EGM96'):
         """ Construct object with raster from a single band dataset. 
         
         Parameters:
@@ -93,7 +94,8 @@ class DEMRaster(__Raster):
                      if tuple is projected coordinates, True if WGS84.
             band : default 1. Specify GDAL band number to load. If you want to
                    load multiple bands at once use MultiBandRaster instead.
-            
+            ref : EGM96 or WGS84, SRTM data are referenced to the geoid EGM96 while CS2 and SAR data are referenced to the ellipsoid WGS84
+
         """
         self._load_ds(ds_filename)     
         
@@ -118,6 +120,13 @@ class DEMRaster(__Raster):
         nodata=band.GetNoDataValue()
         if nodata != None:
             self.r[self.r==nodata] = np.nan
+
+        #Correction to the reference ellipsoid
+        self.ref = ref
+        if ref=='WGS84':
+            egm96 = EGM96.EGM96reader()
+            lons, lats = self.coordinates()
+            self.r += egm96(lons,lats)
 
 
     def compute_slope(self):

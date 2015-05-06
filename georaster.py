@@ -870,7 +870,7 @@ class MultiBandRaster(__Raster):
 
 
 
-def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None,mask=None):
+def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None,mask=None,dtype=gdal.GDT_Float32):
     """ Save a GeoTIFF.
     
     Inputs:
@@ -880,6 +880,7 @@ def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None,mask=No
         One of proj4 or wkt :
             proj4 : a proj4 string
             wkt : a WKT projection string
+        dtype : gdal.GDT type (Byte : 1, Int32 : 5, Float32 : 6)
 
     -999 is specified as the NoData value.
 
@@ -912,7 +913,7 @@ def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None,mask=No
     else:
         driver = gdal.GetDriverByName('MEM')
 
-    dst_ds = driver.Create(outfile, xdim, ydim, nbands, gdal.GDT_Float32)
+    dst_ds = driver.Create(outfile, xdim, ydim, nbands, dtype)
     # Top left x, w-e pixel resolution, rotation, top left y, rotation, n-s pixel resolution
     dst_ds.SetGeoTransform(geoTransform)
       

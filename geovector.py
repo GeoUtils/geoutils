@@ -195,7 +195,11 @@ Additionally, a number of instances are available in the class.
 
         self.fields = fields
         
-        self.proj = pyproj.Proj(self.srs.ExportToProj4())
+        try:
+            self.proj = pyproj.Proj(self.srs.ExportToProj4())
+        except AttributeError:  #case srs not defined
+            self.proj = None
+
 
         
     def read(self,subset='all'):

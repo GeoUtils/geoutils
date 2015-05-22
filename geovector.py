@@ -14,7 +14,10 @@ from matplotlib import cm
 from matplotlib.collections import PatchCollection
 from matplotlib import colors
 from scipy import ndimage
-from skimage import morphology
+try:
+    from skimage import morphology
+except ImportError:
+    pass
 
 #Personal libraries
 import georaster as raster
@@ -195,7 +198,11 @@ Additionally, a number of instances are available in the class.
 
         self.fields = fields
         
-        self.proj = pyproj.Proj(self.srs.ExportToProj4())
+        try:
+            self.proj = pyproj.Proj(self.srs.ExportToProj4())
+        except AttributeError:  #case srs not defined
+            self.proj = None
+
 
         
     def read(self,subset='all'):

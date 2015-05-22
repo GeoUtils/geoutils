@@ -14,7 +14,10 @@ from matplotlib import cm
 from matplotlib.collections import PatchCollection
 from matplotlib import colors
 from scipy import ndimage
-from skimage import morphology
+try:
+    from skimage import morphology
+except ImportError:
+    pass
 
 #Personal libraries
 import georaster as raster

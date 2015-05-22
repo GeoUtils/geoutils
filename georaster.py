@@ -259,8 +259,8 @@ class __Raster:
             x,y = self.proj(x,y)
 
         # Shift to the center of the pixel
-        x = np.array([x-self.xres/2])
-        y = np.array([y-self.yres/2])
+        x = np.array(x-self.xres/2)
+        y = np.array(y-self.yres/2)
 
         g0, g1, g2, g3, g4, g5 = self.ds.GetGeoTransform()
         if g2 == 0:
@@ -281,10 +281,10 @@ class __Raster:
 
         xPixel_new = np.copy(xPixel)
         yPixel_new = np.copy(yPixel)
-        xPixel_new[xPixel_new>nx] = nx
-        yPixel_new[yPixel_new>ny] = ny
-        xPixel_new[xPixel_new<0] = 0
-        yPixel_new[yPixel_new<0] = 0
+        xPixel_new = np.fmin(xPixel_new,nx)
+        yPixel_new = np.fmin(yPixel_new,ny)
+        xPixel_new = np.fmax(xPixel_new,0)
+        yPixel_new = np.fmax(yPixel_new,0)
         
         if np.any(xPixel_new!=xPixel) or np.any(yPixel_new!=yPixel):
             print "Warning : some points are out of domain for file %s" %(self.ds_file)

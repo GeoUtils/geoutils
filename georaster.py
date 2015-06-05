@@ -492,8 +492,8 @@ class __Raster:
             return 1
 
         if (Xpixels==None) & (Ypixels==None):
-            Xpixels = np.arange(self.ny)
-            Ypixels = np.arange(self.nx)
+            Xpixels = np.arange(self.nx)
+            Ypixels = np.arange(self.ny)
             Xpixels, Ypixels = np.meshgrid(Xpixels,Ypixels)
         else:
             Xpixels = np.array(Xpixels)

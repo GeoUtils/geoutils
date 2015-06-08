@@ -146,6 +146,7 @@ slave_dem = raster.SingleBandRaster(args.slave_dem)
 band=slave_dem.ds.GetRasterBand(1)
 nodata = band.GetNoDataValue()
 slave_dem.r = np.float32(slave_dem.r)
+slave_dem.r[slave_dem.r==nodata] = np.nan
 
 #reproject slave DEM into the master DEM spatial reference system
 if master_dem.r.shape!=slave_dem.r.shape:

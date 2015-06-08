@@ -170,10 +170,12 @@ ygrid = np.arange(master_dem.ny)
 
 
 diff_before = master_dem.r-dem2coreg
-pl.imshow(diff_before)
-cb=pl.colorbar()
-cb.set_label('Elevation difference (m)')
-pl.show()
+if args.plot==True:
+  maxval = np.percentile(np.abs(diff_before[np.isfinite(diff_before)]),99)
+  pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
+  cb=pl.colorbar()
+  cb.set_label('Elevation difference (m)')
+  pl.show()
 
 for i in xrange(args.niter):
 
@@ -201,7 +203,6 @@ for i in xrange(args.niter):
 #Display results
 if args.plot==True:
     diff_after = master_dem.r - znew
-    maxval = np.percentile(np.abs(diff_before[np.isfinite(diff_before)]),99)
 
     pl.figure('before')
     pl.imshow(diff_before,vmin=-maxval,vmax=maxval)

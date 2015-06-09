@@ -158,7 +158,10 @@ if __name__=='__main__':
 
     dem2coreg[dem2coreg==nodata] = np.nan
 
-
+    #fill NaN values for interpolation
+    nanval = np.isnan(dem2coreg)
+    slave_filled = np.where(np.isnan(dem2coreg),-9999,dem2coreg)
+    
     #mask points
     if args.maskfile!='none':
         mask = raster.SingleBandRaster(args.maskfile)
@@ -178,8 +181,9 @@ if __name__=='__main__':
       cb.set_label('Elevation difference (m)')
       pl.show()
 
-    #Create spline function
-    f = RectBivariateSpline(ygrid,xgrid, dem2coreg,kx=1,ky=1)
+    #Create spline functions
+    f = RectBivariateSpline(ygrid,xgrid, slave_filled,kx=1,ky=1)
+    f2 = RectBivariateSpline(ygrid,xgrid, nanval,kx=1,ky=1)
     xoff, yoff = 0,0 
     
     for i in xrange(args.niter):
@@ -192,6 +196,10 @@ if __name__=='__main__':
     
         #resample slave DEM in the new grid
         znew = f(ygrid-yoff,xgrid-xoff)
+        nanval_new = f2(ygrid-yoff,xgrid-xoff)
+        
+        #remove filled values that have been interpolated
+        znew[nanval_new!=0] = np.nan
 
         #Remove bias
         diff = znew-master_dem.r

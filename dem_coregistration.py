@@ -112,114 +112,114 @@ def coregistration(master_dem,slave_dem,plot=False):
 
     return east, north, c
 
+if __name__=='__main__':
+
+    #Set up arguments
+    parser = argparse.ArgumentParser(description='Fine coregistration of 2 DEMs using the method presented in Nuth & Kaab 2011')
+
+    #Positional arguments
+    parser.add_argument('master_dem', type=str, help='str,path to the master DEM')
+    parser.add_argument('slave_dem', type=str, help='str, path to the slave DEM')
+    parser.add_argument('outfile', type=str, help='str, path to the output coregistered DEM')
+
+    #optional arguments
+    parser.add_argument('-iter', dest='niter', type=int, default=5, help='int, number of iterations (default: 5)')
+    parser.add_argument('-plot', dest='plot', help='Plot processing steps and final results',action='store_true')
+    parser.add_argument('-m', dest='maskfile', type=str, default='none', help='str, path to a mask of same size as the master DEM, to filter out non stable areas such as glaciers (default is none)')
+    parser.add_argument('-n1', dest='nodata1', type=str, default='none', help='int, no data value for master DEM if not specified in the raster file (default read in the raster file)')
 
 
-#Set up arguments
-parser = argparse.ArgumentParser(description='Fine coregistration of 2 DEMs using the method presented in Nuth & Kaab 2011')
-
-#Positional arguments
-parser.add_argument('master_dem', type=str, help='str,path to the master DEM')
-parser.add_argument('slave_dem', type=str, help='str, path to the slave DEM')
-parser.add_argument('outfile', type=str, help='str, path to the output coregistered DEM')
-
-#optional arguments
-parser.add_argument('-iter', dest='niter', type=int, default=5, help='int, number of iterations (default: 5)')
-parser.add_argument('-plot', dest='plot', help='Plot processing steps and final results',action='store_true')
-parser.add_argument('-m', dest='maskfile', type=str, default='none', help='str, path to a mask of same size as the master DEM, to filter out non stable areas such as glaciers (default is none)')
-parser.add_argument('-n1', dest='nodata1', type=str, default='none', help='int, no data value for master DEM if not specified in the raster file (default read in the raster file)')
+    args = parser.parse_args()
 
 
-args = parser.parse_args()
+    #Read DEMs
+    master_dem = raster.SingleBandRaster(args.master_dem)
+    master_dem.r = np.float32(master_dem.r)
+    if args.nodata1!='none':
+        master_dem.r[master_dem.r==int(args.nodata1)] = np.nan
+    else:
+        band=master_dem.ds.GetRasterBand(1)
+        nodata = band.GetNoDataValue()
+        master_dem.r[master_dem.r==nodata] = np.nan
 
-
-#Read DEMs
-master_dem = raster.SingleBandRaster(args.master_dem)
-master_dem.r = np.float32(master_dem.r)
-if args.nodata1!='none':
-    master_dem.r[master_dem.r==int(args.nodata1)] = np.nan
-else:
-    band=master_dem.ds.GetRasterBand(1)
+    slave_dem = raster.SingleBandRaster(args.slave_dem)
+    band=slave_dem.ds.GetRasterBand(1)
     nodata = band.GetNoDataValue()
-    master_dem.r[master_dem.r==nodata] = np.nan
+    slave_dem.r = np.float32(slave_dem.r)
+    slave_dem.r[slave_dem.r==nodata] = np.nan
 
-slave_dem = raster.SingleBandRaster(args.slave_dem)
-band=slave_dem.ds.GetRasterBand(1)
-nodata = band.GetNoDataValue()
-slave_dem.r = np.float32(slave_dem.r)
-slave_dem.r[slave_dem.r==nodata] = np.nan
+    #reproject slave DEM into the master DEM spatial reference system
+    if master_dem.r.shape!=slave_dem.r.shape:
+        band=master_dem.ds.GetRasterBand(1)
+        dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=band.DataType, nodata=nodata, interp_type=1)
 
-#reproject slave DEM into the master DEM spatial reference system
-if master_dem.r.shape!=slave_dem.r.shape:
-    band=master_dem.ds.GetRasterBand(1)
-    dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=band.DataType, nodata=nodata, interp_type=1)
+    else:
+        dem2coreg = slave_dem.r
 
-else:
-    dem2coreg = slave_dem.r
-
-dem2coreg[dem2coreg==nodata] = np.nan
+    dem2coreg[dem2coreg==nodata] = np.nan
 
 
-#mask points
-if args.maskfile!='none':
-    mask = raster.SingleBandRaster(args.maskfile)
-    master_dem.r[mask.r>1] = np.nan
+    #mask points
+    if args.maskfile!='none':
+        mask = raster.SingleBandRaster(args.maskfile)
+        master_dem.r[mask.r>1] = np.nan
 
 
-#Set master DEM grid for later resampling
-xgrid = np.arange(master_dem.nx)
-ygrid = np.arange(master_dem.ny)
+    #Set master DEM grid for later resampling
+    xgrid = np.arange(master_dem.nx)
+    ygrid = np.arange(master_dem.ny)
 
 
-diff_before = master_dem.r-dem2coreg
-if args.plot==True:
-  maxval = np.percentile(np.abs(diff_before[np.isfinite(diff_before)]),99)
-  pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
-  cb=pl.colorbar()
-  cb.set_label('Elevation difference (m)')
-  pl.show()
+    diff_before = master_dem.r-dem2coreg
+    if args.plot==True:
+      maxval = np.percentile(np.abs(diff_before[np.isfinite(diff_before)]),99)
+      pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
+      cb=pl.colorbar()
+      cb.set_label('Elevation difference (m)')
+      pl.show()
 
-for i in xrange(args.niter):
+    for i in xrange(args.niter):
 
-    #compute offset
-    east, north, c = coregistration(master_dem.r,dem2coreg,args.plot)
-    print "Offset in pixels : (%f,%f)" %(east,north)
-    
-    #resample slave DEM in the new grid
-#    f = RectBivariateSpline(xgrid,ygrid, np.transpose(dem2coreg),kx=3,ky=3)
-#    znew = f(xgrid-east,ygrid-north)
-#    znew = np.transpose(znew)
+        #compute offset
+        east, north, c = coregistration(master_dem.r,dem2coreg,args.plot)
+        print "Offset in pixels : (%f,%f)" %(east,north)
 
-    f = RectBivariateSpline(ygrid,xgrid, dem2coreg,kx=1,ky=1)
-    znew = f(ygrid-east,xgrid-north)
+        #resample slave DEM in the new grid
+    #    f = RectBivariateSpline(xgrid,ygrid, np.transpose(dem2coreg),kx=3,ky=3)
+    #    znew = f(xgrid-east,ygrid-north)
+    #    znew = np.transpose(znew)
 
-    #Remove bias
-    diff = znew-master_dem.r
-#    bias = np.median(diff[np.isfinite(diff)])
-    bias = np.nanmean(diff)
-    znew-= bias
+        f = RectBivariateSpline(ygrid,xgrid, dem2coreg,kx=1,ky=1)
+        znew = f(ygrid-east,xgrid-north)
 
-    dem2coreg = znew    
-    
+        #Remove bias
+        diff = znew-master_dem.r
+    #    bias = np.median(diff[np.isfinite(diff)])
+        bias = np.nanmean(diff)
+        znew-= bias
 
-#Display results
-if args.plot==True:
-    diff_after = master_dem.r - znew
+        dem2coreg = znew    
 
-    pl.figure('before')
-    pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
-    cb = pl.colorbar()
-    cb.set_label('DEM difference (m)')
-    pl.figure('after')
-    pl.imshow(diff_after,vmin=-maxval,vmax=maxval)
-    cb = pl.colorbar()
-    cb.set_label('DEM difference (m)')
-    #pl.show()
 
-    pl.figure()
-    pl.hist(diff_after[np.isfinite(diff_after)],bins=np.linspace(-maxval,maxval,50))
-    pl.xlabel('DEM difference (m)')
-    pl.show()
+    #Display results
+    if args.plot==True:
+        diff_after = master_dem.r - znew
 
-#Save to output file
-dtype = master_dem.ds.GetRasterBand(1).DataType
-raster.simple_write_geotiff(args.outfile, znew, master_dem.ds.GetGeoTransform(), wkt=master_dem.srs.ExportToWkt(),dtype=dtype)
+        pl.figure('before')
+        pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
+        cb = pl.colorbar()
+        cb.set_label('DEM difference (m)')
+        pl.figure('after')
+        pl.imshow(diff_after,vmin=-maxval,vmax=maxval)
+        cb = pl.colorbar()
+        cb.set_label('DEM difference (m)')
+        #pl.show()
+
+        pl.figure()
+        pl.hist(diff_after[np.isfinite(diff_after)],bins=np.linspace(-maxval,maxval,50))
+        pl.xlabel('DEM difference (m)')
+        pl.show()
+
+    #Save to output file
+    dtype = master_dem.ds.GetRasterBand(1).DataType
+    raster.simple_write_geotiff(args.outfile, znew, master_dem.ds.GetGeoTransform(), wkt=master_dem.srs.ExportToWkt(),dtype=dtype)

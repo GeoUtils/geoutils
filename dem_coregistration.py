@@ -178,19 +178,20 @@ if __name__=='__main__':
       cb.set_label('Elevation difference (m)')
       pl.show()
 
+    #Create spline function
+    f = RectBivariateSpline(ygrid,xgrid, dem2coreg,kx=1,ky=1)
+    xoff, yoff = 0,0 
+    
     for i in xrange(args.niter):
 
         #compute offset
         east, north, c = coregistration(master_dem.r,dem2coreg,args.plot)
         print "Offset in pixels : (%f,%f)" %(east,north)
-
+        xoff+=north
+        yoff+=east
+    
         #resample slave DEM in the new grid
-    #    f = RectBivariateSpline(xgrid,ygrid, np.transpose(dem2coreg),kx=3,ky=3)
-    #    znew = f(xgrid-east,ygrid-north)
-    #    znew = np.transpose(znew)
-
-        f = RectBivariateSpline(ygrid,xgrid, dem2coreg,kx=1,ky=1)
-        znew = f(ygrid-east,xgrid-north)
+        znew = f(ygrid-yoff,xgrid-xoff)
 
         #Remove bias
         diff = znew-master_dem.r

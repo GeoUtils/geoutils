@@ -127,6 +127,7 @@ if __name__=='__main__':
     parser.add_argument('-plot', dest='plot', help='Plot processing steps and final results',action='store_true')
     parser.add_argument('-m', dest='maskfile', type=str, default='none', help='str, path to a mask of same size as the master DEM, to filter out non stable areas such as glaciers (default is none)')
     parser.add_argument('-n1', dest='nodata1', type=str, default='none', help='int, no data value for master DEM if not specified in the raster file (default read in the raster file)')
+    parser.add_argument('-n2', dest='nodata2', type=str, default='none', help='int, no data value for slave DEM if not specified in the raster file (default read in the raster file)')
 
 
     args = parser.parse_args()
@@ -136,17 +137,19 @@ if __name__=='__main__':
     master_dem = raster.SingleBandRaster(args.master_dem)
     master_dem.r = np.float32(master_dem.r)
     if args.nodata1!='none':
-        master_dem.r[master_dem.r==int(args.nodata1)] = np.nan
+        master_dem.r[master_dem.r==float(args.nodata1)] = np.nan
     else:
         band=master_dem.ds.GetRasterBand(1)
         nodata = band.GetNoDataValue()
         master_dem.r[master_dem.r==nodata] = np.nan
 
     slave_dem = raster.SingleBandRaster(args.slave_dem)
-    band=slave_dem.ds.GetRasterBand(1)
-    nodata = band.GetNoDataValue()
     slave_dem.r = np.float32(slave_dem.r)
-    slave_dem.r[slave_dem.r==nodata] = np.nan
+    if args.nodata2!='none':
+      nodata = float(args.nodata2)
+    else:
+      band=slave_dem.ds.GetRasterBand(1)
+      nodata = band.GetNoDataValue()
 
     #reproject slave DEM into the master DEM spatial reference system
     if master_dem.r.shape!=slave_dem.r.shape:
@@ -181,7 +184,7 @@ if __name__=='__main__':
       cb.set_label('Elevation difference (m)')
       pl.show()
 
-    #Create spline functions
+    #Create spline function
     f = RectBivariateSpline(ygrid,xgrid, slave_filled,kx=1,ky=1)
     f2 = RectBivariateSpline(ygrid,xgrid, nanval,kx=1,ky=1)
     xoff, yoff = 0,0 

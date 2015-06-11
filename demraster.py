@@ -124,8 +124,12 @@ class DEMRaster(__Raster):
         #Correction to the reference ellipsoid
         self.ref = ref
         if ref=='WGS84':
+            if self.srs.IsProjected():
+                x, y = self.coordinates()
+                lons, lats = self.proj(x,y,inverse=True)
+            else:
+                lons, lats = self.coordinates()
             egm96 = EGM96.EGM96reader()
-            lons, lats = self.coordinates()
             self.r += egm96(lons,lats)
 
         #Compatibility with Topo class

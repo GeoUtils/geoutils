@@ -154,7 +154,7 @@ if __name__=='__main__':
     #reproject slave DEM into the master DEM spatial reference system
     if master_dem.r.shape!=slave_dem.r.shape:
         band=master_dem.ds.GetRasterBand(1)
-        dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=band.DataType, nodata=nodata, interp_type=1)
+        dem2coreg = np.float32(slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=band.DataType, nodata=nodata, interp_type=1))
 
     else:
         dem2coreg = slave_dem.r
@@ -206,8 +206,8 @@ if __name__=='__main__':
 
         #Remove bias
         diff = znew-master_dem.r
-    #    bias = np.median(diff[np.isfinite(diff)])
-        bias = np.nanmean(diff)
+        bias = np.median(diff[np.isfinite(diff)])
+        #bias = np.nanmean(diff)
         znew-= bias
 
         dem2coreg = znew    
@@ -215,7 +215,7 @@ if __name__=='__main__':
 
     #Display results
     if args.plot==True:
-        diff_after = master_dem.r - znew
+        diff_after = master_dem.r - dem2coreg
 
         pl.figure('before')
         pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
@@ -234,4 +234,4 @@ if __name__=='__main__':
 
     #Save to output file
     dtype = master_dem.ds.GetRasterBand(1).DataType
-    raster.simple_write_geotiff(args.outfile, znew, master_dem.ds.GetGeoTransform(), wkt=master_dem.srs.ExportToWkt(),dtype=dtype)
+    raster.simple_write_geotiff(args.outfile, dem2coreg, master_dem.ds.GetGeoTransform(), wkt=master_dem.srs.ExportToWkt(),dtype=dtype)

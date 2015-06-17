@@ -64,7 +64,7 @@ def coregistration(master_dem,slave_dem,plot=False):
     for i in slice_bounds:
         target_slice = target[(i<aspect) & (aspect<i+np.pi/36)] #select target in the slice 
         target_slice = target_slice[(target_slice<200) & (target_slice>-200)] #avoid target>200 and target<-200
-        mean[j] = np.mean(target_slice) #derive mean of target in the slice
+        mean[j] = np.median(target_slice) #derive mean of target in the slice
         x_s[j] = i
         j=j+1
 
@@ -128,6 +128,7 @@ if __name__=='__main__':
     parser.add_argument('-m', dest='maskfile', type=str, default='none', help='str, path to a mask of same size as the master DEM, to filter out non stable areas such as glaciers (default is none)')
     parser.add_argument('-n1', dest='nodata1', type=str, default='none', help='int, no data value for master DEM if not specified in the raster file (default read in the raster file)')
     parser.add_argument('-n2', dest='nodata2', type=str, default='none', help='int, no data value for slave DEM if not specified in the raster file (default read in the raster file)')
+    parser.add_argument('-zmax', dest='zmax', type=str, default='none', help='float, points with altitude below zmax are used to vertically align the DEMs, to be used to filter out points with snow (default none)')
 
 
     args = parser.parse_args()
@@ -178,8 +179,8 @@ if __name__=='__main__':
 
     diff_before = master_dem.r-dem2coreg
     if args.plot==True:
-      maxval = np.percentile(np.abs(diff_before[np.isfinite(diff_before)]),99)
-      pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
+      maxval = np.percentile(np.abs(diff_before[np.isfinite(diff_before)]),95)
+      pl.imshow(diff_before,vmin=-2,vmax=2)
       cb=pl.colorbar()
       cb.set_label('Elevation difference (m)')
       pl.show()
@@ -206,6 +207,8 @@ if __name__=='__main__':
 
         #Remove bias
         diff = znew-master_dem.r
+        if args.zmax!='none':
+          diff[master_dem.r>int(args.zmax)] = np.nan
         bias = np.median(diff[np.isfinite(diff)])
         #bias = np.nanmean(diff)
         znew-= bias
@@ -218,11 +221,11 @@ if __name__=='__main__':
         diff_after = master_dem.r - dem2coreg
 
         pl.figure('before')
-        pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
+        pl.imshow(diff_before,vmin=-2,vmax=2)
         cb = pl.colorbar()
         cb.set_label('DEM difference (m)')
         pl.figure('after')
-        pl.imshow(diff_after,vmin=-maxval,vmax=maxval)
+        pl.imshow(diff_after,vmin=-2,vmax=2)
         cb = pl.colorbar()
         cb.set_label('DEM difference (m)')
         #pl.show()

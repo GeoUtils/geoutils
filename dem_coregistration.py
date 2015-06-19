@@ -112,6 +112,38 @@ def coregistration(master_dem,slave_dem,plot=False):
 
     return east, north, c
 
+def deramping(diff,X,Y):
+
+  #filter outliers
+  med = np.median(diff[np.isfinite(diff)])
+  mad=1.4826*np.median(np.abs(diff[np.isfinite(diff)]-med))
+  diff[np.abs(diff)>3*mad] = np.nan
+
+  #Least square fit   
+  def peval(X,Y,p):
+    return p[0] + p[1]*X + p[2]*Y
+
+  def residuals(p,z,X,Y):
+    err = peval(X,Y,p)-z
+    err = err[np.isfinite(err)]
+    return err
+
+  z = diff[np.isfinite(diff)]
+  x = X[np.isfinite(diff)]
+  y = Y[np.isfinite(diff)]
+
+  plsq = leastsq(residuals, (0,0,0), args = (z,x,y),full_output = 1)
+  zfit = peval(X,Y,plsq[0])
+
+  pl.figure('before')
+  pl.imshow(diff,vmin=-4,vmax=4,cmap=pl.get_cmap('RdBu'))
+  pl.figure('after')
+  pl.imshow(diff-zfit,vmin=-4,vmax=4,cmap=pl.get_cmap('RdBu'))
+  pl.show()
+
+  return zfit
+  
+
 if __name__=='__main__':
 
     #Set up arguments
@@ -175,6 +207,7 @@ if __name__=='__main__':
     #Set master DEM grid for later resampling
     xgrid = np.arange(master_dem.nx)
     ygrid = np.arange(master_dem.ny)
+    X, Y = master_dem.coordinates()
 
 
     diff_before = master_dem.r-dem2coreg
@@ -206,15 +239,26 @@ if __name__=='__main__':
         znew[nanval_new!=0] = np.nan
 
         #Remove bias
-        diff = znew-master_dem.r
-        if args.zmax!='none':
-          diff[master_dem.r>int(args.zmax)] = np.nan
-        bias = np.median(diff[np.isfinite(diff)])
-        #bias = np.nanmean(diff)
-        znew-= bias
+        # diff = znew-master_dem.r
+        # if args.zmax!='none':
+        #   diff[master_dem.r>int(args.zmax)] = np.nan
+        # ramp = deramping(diff,X,Y)
+        # znew-=ramp
+        # pl.imshow(znew-master_dem.r,vmin=-4,vmax=4,cmap=pl.get_cmap('RdBu'))
+        # pl.show()
+#         bias = np.median(diff[np.isfinite(diff)])
+#         #bias = np.nanmean(diff)
+#         znew-= bias
 
         dem2coreg = znew    
 
+    #Deramping
+    print "deramping"
+    diff = dem2coreg-master_dem.r
+    if args.zmax!='none':
+      diff[master_dem.r>int(args.zmax)] = np.nan
+    ramp = deramping(diff,X,Y)
+    dem2coreg-=ramp
 
     #Display results
     if args.plot==True:

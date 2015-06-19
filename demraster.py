@@ -48,6 +48,7 @@ import xml.etree.ElementTree as etree
 import re
 import mpl_toolkits.basemap.pyproj as pyproj
 import matplotlib.pyplot as pl
+from scipy.ndimage.filters import gaussian_filter
 
 from georaster import __Raster
 import geometry as geo
@@ -178,7 +179,7 @@ class DEMRaster(__Raster):
 
 
 
-    def shaded_relief(self,cmap=pl.get_cmap('Greys'),alpha=1,azdeg=100,altdeg=65,asp='default'):
+    def shaded_relief(self,cmap=pl.get_cmap('Greys'),alpha=1,azdeg=100,altdeg=65,asp='default',smoothing=1):
         """
         Function to plot a shaded relief of the DEM
         cmap : object of class Colormap
@@ -186,6 +187,7 @@ class DEMRaster(__Raster):
         azdeg : f, azimuth (measured clockwise from south) of the light source in degress for the shaded relief
         altdeg : f, altitude (measured up from the plane of the surface) of the light source in degrees
         asp : f, imshow window aspect, default is set to have orthonormal axis (meters not degree)
+        smoothing : int, apply a gaussian filter of size 'smoothing'. Can be used to reduce noise (Default is none)
         """
 
         #set asp so that lat/lon spacing are equal
@@ -202,8 +204,12 @@ class DEMRaster(__Raster):
         shaded = np.sin(altituderad) * np.sin(slope) + np.cos(altituderad) * np.cos(slope)* np.cos(azrad - aspect)  
         rgb=255*(shaded + 1)/2  
 
+        #Smooth
+        if smoothing!=1:
+            rgb = gaussian_filter(rgb,smoothing)
+
         #plot
-        pl.imshow(rgb,extent=self.extent,interpolation='bilinear',cmap=cmap,alpha=alpha,aspect=asp)
+        pl.imshow(rgb,vmin=0,vmax=255,extent=self.extent,interpolation='bilinear',cmap=cmap,alpha=alpha,aspect=asp)
 
         #other option (more time/memory consuming)
         # from matplotlib.colors import LightSource

@@ -159,6 +159,9 @@ class DEMRaster(__Raster):
             latl = np.roll(lat,1,0)
             distx = geo.dist_ortho(lon,lat,lonr,lat)
             disty = geo.dist_ortho(lon,lat,lon,latl)
+            #singularities at edges
+            distx[:,0] = distx[:,1]
+            disty[0] = disty[1]
         else:
             print "Need implementation for projected systems"
             sys.exit(1)

@@ -327,12 +327,14 @@ Additionally, a number of instances are available in the class.
         elif isinstance(subset,numbers.Number):
             subset = [subset,] #create list if only one value
 
+        p = []
         for feat in self.features[subset]:
             sh = Shape(feat)
             if map_obj==None:
-                sh.draw(**kwargs)
+                p0 = sh.draw(**kwargs)
             else:
-                sh.draw_on_map(map_obj,**kwargs)
+                p0 = sh.draw_on_map(map_obj,**kwargs)
+            p.append(p0)
 
         ax = pl.gca()
         if extent=='default':
@@ -345,6 +347,7 @@ Additionally, a number of instances are available in the class.
         ax.set_xlim(xmin,xmax)
         ax.set_ylim(ymin,ymax)
 
+        return p
 
     def draw_by_attr(self,attr,cmap=cm.jet,subset='all',vmin='default',vmax='default',**kwargs):
         """
@@ -650,6 +653,7 @@ class Shape():
             ax.set_xlim(xmin,xmax)
             ax.set_ylim(ymin,ymax)
 
+            return patch
 
         def read(self):
             """
@@ -715,6 +719,7 @@ class Shape():
             ax.set_xlim(xmin,xmax)
             ax.set_ylim(ymin,ymax)
 
+            return patch
 
         def rasterize(self,srs,pixel_size):
             

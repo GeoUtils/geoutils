@@ -336,7 +336,10 @@ Additionally, a number of instances are available in the class.
 
         ax = pl.gca()
         if extent=='default':
-            xmin, xmax,ymin,ymax = self.extent
+            if map_obj==None:
+                xmin, xmax,ymin,ymax = self.extent
+            else:
+                xmin, xmax, ymin, ymax = map_obj.xmin, map_obj.xmax, map_obj.ymin, map_obj.ymax
         else:
             xmin, xmax, ymin, ymax = extent
         ax.set_xlim(xmin,xmax)

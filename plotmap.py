@@ -237,9 +237,8 @@ class Map:
                 vmin=0,norm=norm,interpolation='nearest',alpha=1)
         # Continuous colormap option
         else:
-            cmap = eval(cmap)
             plt.imshow(data.r,extent=data.get_extent_projected(self.map),
-                cmap=cmap,
+                cmap=plt.get_cmap(cmap),
                 vmin=vmin,vmax=vmax,interpolation='nearest',alpha=1)
 
 

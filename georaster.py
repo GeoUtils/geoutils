@@ -342,7 +342,7 @@ class __Raster:
                                                       int(x_offset),int(y_offset))
 
         # Update image size
-        self.nx, self.ny = arr.shape
+        self.nx, self.ny = int(x_offset),int(y_offset) #arr.shape
         self.x0 = int(xpx1)
         self.y0 = int(ypx1)
 

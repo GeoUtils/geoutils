@@ -304,7 +304,7 @@ Additionally, a number of instances are available in the class.
         return SingleLayerVector(outDataSet)
 
 
-    def draw(self,subset='all',extent='default',map_obj=None,**kwargs):
+    def draw(self,subset='all',extent='default',map_obj=None,ax='none',**kwargs):
         """
         Plot the geometries defined in the vector file
         Inputs :
@@ -331,12 +331,13 @@ Additionally, a number of instances are available in the class.
         for feat in self.features[subset]:
             sh = Shape(feat)
             if map_obj==None:
-                p0 = sh.draw(**kwargs)
+                p0 = sh.draw(ax=ax,**kwargs)
             else:
-                p0 = sh.draw_on_map(map_obj,**kwargs)
+                p0 = sh.draw_on_map(map_obj,ax=ax,**kwargs)
             p.append(p0)
-
-        ax = pl.gca()
+        
+        if ax=='none':
+            ax = pl.gca()
         if extent=='default':
             if map_obj==None:
                 xmin, xmax,ymin,ymax = self.extent
@@ -499,10 +500,14 @@ Additionally, a number of instances are available in the class.
             if nodata!=None:
                 data = data[data!=nodata]
 
+            median.append(data)
+
             #Compute statistics
             if len(data)>0:
                 median.append(np.median(data))
-                std.append(np.std(data))
+                mad = 1.4826*np.median(np.abs(data-np.median(data)))
+                std.append(mad)
+                #                std.append(np.std(data))
                 count.append(len(data))
                 frac.append(float(len(data))/len(inside_i))
             else:
@@ -632,7 +637,7 @@ class Shape():
                 self.read()
 
 
-        def draw(self, **kwargs):
+        def draw(self, ax='none', **kwargs):
             """
             Draw the shape using the matplotlib.path.Path and matplotlib.patches.PathPatch classes
             **kwargs : any optional argument accepted by the matplotlib.patches.PathPatch class, e.g.
@@ -648,7 +653,8 @@ class Shape():
 
 #            fig = pl.figure()
 #            ax=fig.add_subplot(111)
-            ax = pl.gca()
+            if ax=='none':
+                ax = pl.gca()
             ax.add_patch(patch)
             ax.set_xlim(xmin,xmax)
             ax.set_ylim(ymin,ymax)
@@ -688,7 +694,7 @@ class Shape():
             self.codes = codes
             self.path = Path(vertices,codes)  #used for plotting
 
-        def draw_on_map(self,m, **kwargs):
+        def draw_on_map(self,m,ax='none', **kwargs):
             """
             Draw the shape using the matplotlib.path.Path and matplotlib.patches.PathPatch classes
             **kwargs : any optional argument accepted by the matplotlib.patches.PathPatch class, e.g.
@@ -714,7 +720,8 @@ class Shape():
             xmax, ymax = m(xmax,ymax)
 
             #plot
-            ax = pl.gca()
+            if ax=='none':
+                ax = pl.gca()
             ax.add_patch(patch)
             ax.set_xlim(xmin,xmax)
             ax.set_ylim(ymin,ymax)
@@ -771,7 +778,7 @@ class Shape():
             mask, xx, yy = self.rasterize(srs,pixel_size)
 
             # Fill small holes on mask, e.g supraglacial lakes
-            mask_fill = ndimage.binary_opening(mask,iter=2)
+            mask_fill = ndimage.binary_opening(mask,iterations=2)
             
             # Compute the skeleton of the mask to help user
             skel = morphology.skeletonize(mask_fill > 0).astype('float32')

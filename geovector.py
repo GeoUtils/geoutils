@@ -14,6 +14,7 @@ from matplotlib import cm
 from matplotlib.collections import PatchCollection
 from matplotlib import colors
 from scipy import ndimage
+import sys
 try:
     from skimage import morphology
 except ImportError:
@@ -388,6 +389,7 @@ Additionally, a number of instances are available in the class.
         bounds = np.linspace(vmin,vmax,255)
         norm = colors.BoundaryNorm(bounds, cmap.N)
         values[np.isnan(values)] = -1e5
+        cmap = deepcopy(cmap)   #copy to avoid changes applying to other scripts
         cmap.set_under('grey')
 
         p = PatchCollection(patches, cmap=cmap,norm=norm)
@@ -670,18 +672,36 @@ class Shape():
 
             vertices = []
             codes = []
-
+            
+            #POLYGONS
             if self.geom.GetGeometryCount()>0:
                 for i in xrange(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
-                    for j in xrange(poly.GetPointCount()):
-                        vertices.append([poly.GetX(j),poly.GetY(j)])
-                        if j==0:
-                            codes.append(Path.MOVETO)
-                        elif j==poly.GetPointCount()-1:
-                            codes.append(Path.CLOSEPOLY)
-                        else:
-                            codes.append(Path.LINETO)
+
+                    #MULTIPOLYGON
+                    if poly.GetGeometryCount()>0:
+                        for j in xrange(poly.GetGeometryCount()):
+                            ring = poly.GetGeometryRef(j)
+                            for k in xrange(ring.GetPointCount()):
+                                vertices.append([ring.GetX(k),ring.GetY(k)])
+                                if k==0:
+                                    codes.append(Path.MOVETO)
+                                elif k==ring.GetPointCount()-1:
+                                    codes.append(Path.CLOSEPOLY)
+                                else:
+                                    codes.append(Path.LINETO)
+                    #Simple POLYGON
+                    else:
+                        for j in xrange(poly.GetPointCount()):
+                            vertices.append([poly.GetX(j),poly.GetY(j)])
+                            if j==0:
+                                codes.append(Path.MOVETO)
+                            elif j==poly.GetPointCount()-1:
+                                codes.append(Path.CLOSEPOLY)
+                            else:
+                                codes.append(Path.LINETO)
+    
+            #LINE
             else:
                 for j in xrange(self.geom.GetPointCount()):
                     vertices.append([self.geom.GetX(j),self.geom.GetY(j)])

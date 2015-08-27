@@ -212,7 +212,10 @@ Additionally, a number of instances are available in the class.
         Features filtered before are not read.
         """
 
-        nFeat = self.layer.GetFeatureCount()
+        if subset=='all':
+            nFeat = self.layer.GetFeatureCount()
+        else:
+            nFeat = len(subset)
         
         #Initialize dictionnary containing fields data
         self.fields.values = {}
@@ -236,6 +239,7 @@ Additionally, a number of instances are available in the class.
                 for f in self.fields.name:
                     self.fields.values[f][i] = feat.GetField(f)
         else:
+            k=0
             for i in subset:
                 #read each feature
                 feat = self.layer.GetFeature(i)
@@ -243,8 +247,8 @@ Additionally, a number of instances are available in the class.
 
                 #read each field associated to the feature
                 for f in self.fields.name:
-                    self.fields.values[f][i] = feat.GetField(f)
-
+                    self.fields.values[f][k] = feat.GetField(f)
+                k+=1
         self.features = np.array(features)
 
 
@@ -672,43 +676,58 @@ class Shape():
 
             vertices = []
             codes = []
-            
+
             #POLYGONS
-            if self.geom.GetGeometryCount()>0:
+            if self.geom.GetGeometryName()=='POLYGON':
+                for i in xrange(self.geom.GetGeometryCount()):
+                    poly = self.geom.GetGeometryRef(i)
+                    for j in xrange(poly.GetPointCount()):
+                        vertices.append([poly.GetX(j),poly.GetY(j)])
+                        if j==0:
+                            codes.append(Path.MOVETO)
+                        elif j==poly.GetPointCount()-1:
+                            codes.append(Path.CLOSEPOLY)
+                        else:
+                            codes.append(Path.LINETO)
+        
+            elif self.geom.GetGeometryName()=='MULTIPOLYGON':
                 for i in xrange(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
 
-                    #MULTIPOLYGON
-                    if poly.GetGeometryCount()>0:
-                        for j in xrange(poly.GetGeometryCount()):
-                            ring = poly.GetGeometryRef(j)
-                            for k in xrange(ring.GetPointCount()):
-                                vertices.append([ring.GetX(k),ring.GetY(k)])
-                                if k==0:
-                                    codes.append(Path.MOVETO)
-                                elif k==ring.GetPointCount()-1:
-                                    codes.append(Path.CLOSEPOLY)
-                                else:
-                                    codes.append(Path.LINETO)
-                    #Simple POLYGON
-                    else:
-                        for j in xrange(poly.GetPointCount()):
-                            vertices.append([poly.GetX(j),poly.GetY(j)])
-                            if j==0:
+                    for j in xrange(poly.GetGeometryCount()):
+                        ring = poly.GetGeometryRef(j)
+                        for k in xrange(ring.GetPointCount()):
+                            vertices.append([ring.GetX(k),ring.GetY(k)])
+                            if k==0:
                                 codes.append(Path.MOVETO)
-                            elif j==poly.GetPointCount()-1:
+                            elif k==ring.GetPointCount()-1:
                                 codes.append(Path.CLOSEPOLY)
                             else:
                                 codes.append(Path.LINETO)
     
-            #LINE
-            else:
+            #LINESTRING
+            elif self.geom.GetGeometryName()=='LINESTRING':
                 for j in xrange(self.geom.GetPointCount()):
                     vertices.append([self.geom.GetX(j),self.geom.GetY(j)])
                     if j==0:
                         codes.append(Path.MOVETO)
                     else:
                         codes.append(Path.LINETO)
+
+            #MULTILINESTRING
+            elif self.geom.GetGeometryName()=='MULTILINESTRING':
+                for i in xrange(self.geom.GetGeometryCount()):
+                    poly = self.geom.GetGeometryRef(i)
+                    for k in xrange(poly.GetPointCount()):
+                        vertices.append([poly.GetX(k),poly.GetY(k)])
+                        if k==0:
+                            codes.append(Path.MOVETO)
+                        else:
+                            codes.append(Path.LINETO)
+
+            else:
+                print "Geometry type %s not implemented" %self.geom.GetGeometryName()
+                sys.exit(1)
 
             self.vertices = vertices   #list of vertices
             self.codes = codes
@@ -748,10 +767,13 @@ class Shape():
 
             return patch
 
-        def rasterize(self,srs,pixel_size):
+        def rasterize(self,srs,pixel_size,extent='default'):
             
             # Create a memory raster to rasterize into.
-            xmin, xmax, ymin, ymax = self.extent
+            if extent=='default':
+                xmin, xmax, ymin, ymax = self.extent
+            else:
+                xmin, xmax, ymin, ymax = extent
             xsize = int((xmax-xmin)/pixel_size)
             ysize = int((ymax-ymin)/pixel_size)
             target_ds = gdal.GetDriverByName('MEM').Create( '', xsize, ysize, bands=1,eType=gdal.GDT_Byte)

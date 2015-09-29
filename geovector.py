@@ -530,7 +530,6 @@ Additionally, a number of instances are available in the class.
         """
 
         # Open the raster file
-        x_res, y_res = raster.get_pixel_size()
         xsize, ysize = raster.r.shape
         x_min, x_max, y_min, y_max = raster.extent
     
@@ -538,8 +537,8 @@ Additionally, a number of instances are available in the class.
         # Create memory target raster
         target_ds = gdal.GetDriverByName('MEM').Create('', ysize, xsize, 1, gdal.GDT_Byte)
         target_ds.SetGeoTransform((
-                x_min, x_res, 0,
-                y_max, 0, y_res,
+                x_min, raster.xres, 0,
+                y_max, 0, raster.yres,
                 ))
     
         # Make the target raster have the same projection as the source raster
@@ -563,7 +562,6 @@ Additionally, a number of instances are available in the class.
         """
 
         # Open the raster file
-        x_res, y_res = raster.get_pixel_size()
         xsize, ysize = raster.r.shape
         x_min, x_max, y_min, y_max = raster.extent
     
@@ -571,8 +569,8 @@ Additionally, a number of instances are available in the class.
         # Create memory target raster
         target_ds = gdal.GetDriverByName('MEM').Create('', ysize, xsize, 1, gdal.GDT_Float32)
         target_ds.SetGeoTransform((
-                x_min, x_res, 0,
-                y_max, 0, y_res,
+                x_min, raster.xres, 0,
+                y_max, 0, raster.yres,
                 ))
 
         # Make the target raster have the same projection as the source raster

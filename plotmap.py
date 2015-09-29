@@ -145,14 +145,14 @@ class Map:
 
 
 
-    def plot_dem(self,dem_file,region='all'):
+    def plot_dem(self,dem_file,region='all',azdeg=100,altdeg=65):
         """
         Plot a DEM using light-shading on the Basemap.
 
         Inputs:
             dem_file : path and filename of GeoTIFF DEM.
             region : 'all' or latlon tuple (lonll,lonur,latll,latur)
-
+            azdeg/altdeg : azimuth (measured clockwise from south) and altitude (measured up from the plane of the surface) of the light source in degrees.
         """
  
         if region == 'all':
@@ -161,7 +161,7 @@ class Map:
             dem = georaster.SingleBandRaster(dem_file,load_data=region,
                                               latlon=True)
             
-        ls = LightSource(azdeg=0,altdeg=180)
+        ls = LightSource(azdeg=azdeg,altdeg=altdeg)
         rgb = ls.shade(dem.r,cmap=cm.Greys_r)  
         plt.imshow(rgb,extent=dem.get_extent_projected(self.map),
             interpolation='nearest')
@@ -329,14 +329,15 @@ class Map:
 
 
 
-    def save_figure(self,outfile):
+    def save_figure(self,outfile,dpi=300,left=0.1,right=0.9,top=0.95,bottom=0.07):
         """
         Save figure to outfile, having adjusted subplots, with 300dpi resn.
 
         Arguments:
             outfile : str, path and filename of file to save to.
-
+            dpi : image resolution in dots per inch (default is 300)
+            left/right/bottom/top : coordinates of the margins relative to the figure size
         """
 
-        self.fig.subplots_adjust(left=0.1, right=0.9, top=0.95, bottom=0.07)
-        self.fig.savefig(outfile,dpi=300)
+        self.fig.subplots_adjust(left=left, right=right, top=top, bottom=bottom)
+        self.fig.savefig(outfile,dpi=dpi)

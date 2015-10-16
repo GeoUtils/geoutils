@@ -13,6 +13,12 @@ from matplotlib.path import Path
 from matplotlib import cm
 from matplotlib.collections import PatchCollection
 from matplotlib import colors
+from scipy import ndimage
+import sys
+try:
+    from skimage import morphology
+except ImportError:
+    pass
 
 #Personal libraries
 import georaster as raster
@@ -193,16 +199,23 @@ Additionally, a number of instances are available in the class.
 
         self.fields = fields
         
-        self.proj = pyproj.Proj(self.srs.ExportToProj4())
+        try:
+            self.proj = pyproj.Proj(self.srs.ExportToProj4())
+        except AttributeError:  #case srs not defined
+            self.proj = None
+
 
         
-    def read(self):
+    def read(self,subset='all'):
         """
         Load features and fields values defined in the vector file.
         Features filtered before are not read.
         """
 
-        nFeat = self.layer.GetFeatureCount()
+        if subset=='all':
+            nFeat = self.layer.GetFeatureCount()
+        else:
+            nFeat = len(subset)
         
         #Initialize dictionnary containing fields data
         self.fields.values = {}
@@ -211,16 +224,31 @@ Additionally, a number of instances are available in the class.
             dtype = self.fields.dtype[k]
             self.fields.values[f] = np.empty(nFeat,dtype=dtype)
 
+        if subset!='all':
+            if isinstance(subset,numbers.Number):
+                subset = [subset,] #create list if only one value
+
         features = []
-        for i in xrange(nFeat):
-            #read each feature
-            feat = self.layer.GetNextFeature()
-            features.append(feat)
+        if subset=='all':
+            for i in xrange(nFeat):
+                #read each feature
+                feat = self.layer.GetNextFeature()
+                features.append(feat)
 
-            #read each field associated to the feature
-            for f in self.fields.name:
-                self.fields.values[f][i] = feat.GetField(f)
+                #read each field associated to the feature
+                for f in self.fields.name:
+                    self.fields.values[f][i] = feat.GetField(f)
+        else:
+            k=0
+            for i in subset:
+                #read each feature
+                feat = self.layer.GetFeature(i)
+                features.append(feat)
 
+                #read each field associated to the feature
+                for f in self.fields.name:
+                    self.fields.values[f][k] = feat.GetField(f)
+                k+=1
         self.features = np.array(features)
 
 
@@ -281,11 +309,13 @@ Additionally, a number of instances are available in the class.
         return SingleLayerVector(outDataSet)
 
 
-    def draw(self,subset='all',extent='default',**kwargs):
+    def draw(self,subset='all',extent='default',map_obj=None,ax='none',**kwargs):
         """
         Plot the geometries defined in the vector file
         Inputs :
         - subset : indices of the features to plot (Default is 'all')
+        - extent : xmin, xmax, ymin, ymax (Default is self.extent)
+        - map_obj : Basemap object, used to plot on a map
         **kwargs : any optional argument accepted by the matplotlib.patches.PathPatch class, e.g.
             - edgecolor : mpl color spec, or None for default, or ‘none’ for no color
             - facecolor : mpl color spec, or None for default, or ‘none’ for no color
@@ -302,18 +332,28 @@ Additionally, a number of instances are available in the class.
         elif isinstance(subset,numbers.Number):
             subset = [subset,] #create list if only one value
 
+        p = []
         for feat in self.features[subset]:
             sh = Shape(feat)
-            sh.draw(**kwargs)
-
-        ax = pl.gca()
+            if map_obj==None:
+                p0 = sh.draw(ax=ax,**kwargs)
+            else:
+                p0 = sh.draw_on_map(map_obj,ax=ax,**kwargs)
+            p.append(p0)
+        
+        if ax=='none':
+            ax = pl.gca()
         if extent=='default':
-            xmin, xmax,ymin,ymax = self.extent
+            if map_obj==None:
+                xmin, xmax,ymin,ymax = self.extent
+            else:
+                xmin, xmax, ymin, ymax = map_obj.xmin, map_obj.xmax, map_obj.ymin, map_obj.ymax
         else:
             xmin, xmax, ymin, ymax = extent
         ax.set_xlim(xmin,xmax)
         ax.set_ylim(ymin,ymax)
 
+        return p
 
     def draw_by_attr(self,attr,cmap=cm.jet,subset='all',vmin='default',vmax='default',**kwargs):
         """
@@ -353,6 +393,7 @@ Additionally, a number of instances are available in the class.
         bounds = np.linspace(vmin,vmax,255)
         norm = colors.BoundaryNorm(bounds, cmap.N)
         values[np.isnan(values)] = -1e5
+        cmap = deepcopy(cmap)   #copy to avoid changes applying to other scripts
         cmap.set_under('grey')
 
         p = PatchCollection(patches, cmap=cmap,norm=norm)
@@ -465,10 +506,14 @@ Additionally, a number of instances are available in the class.
             if nodata!=None:
                 data = data[data!=nodata]
 
+            median.append(data)
+
             #Compute statistics
             if len(data)>0:
                 median.append(np.median(data))
-                std.append(np.std(data))
+                mad = 1.4826*np.median(np.abs(data-np.median(data)))
+                std.append(mad)
+                #                std.append(np.std(data))
                 count.append(len(data))
                 frac.append(float(len(data))/len(inside_i))
             else:
@@ -480,9 +525,11 @@ Additionally, a number of instances are available in the class.
         return np.array(median), np.array(std), np.array(count), np.array(frac)
 
     def create_mask(self,raster):
+        """
+        Return a mask (Byte) of the polygons in self, in the Spatial Reference and resolution of raster
+        """
 
         # Open the raster file
-        x_res, y_res = raster.get_pixel_size()
         xsize, ysize = raster.r.shape
         x_min, x_max, y_min, y_max = raster.extent
     
@@ -490,8 +537,8 @@ Additionally, a number of instances are available in the class.
         # Create memory target raster
         target_ds = gdal.GetDriverByName('MEM').Create('', ysize, xsize, 1, gdal.GDT_Byte)
         target_ds.SetGeoTransform((
-                x_min, x_res, 0,
-                y_max, 0, y_res,
+                x_min, raster.xres, 0,
+                y_max, 0, raster.yres,
                 ))
     
         # Make the target raster have the same projection as the source raster
@@ -509,6 +556,79 @@ Additionally, a number of instances are available in the class.
         return datamask
 
 
+    def create_mask_attr(self,raster,attr):
+        """
+        Return a raster (Float32) containing the values of attr for each polygon in self, in the Spatial Reference and resolution of raster
+        """
+
+        # Open the raster file
+        xsize, ysize = raster.r.shape
+        x_min, x_max, y_min, y_max = raster.extent
+    
+
+        # Create memory target raster
+        target_ds = gdal.GetDriverByName('MEM').Create('', ysize, xsize, 1, gdal.GDT_Float32)
+        target_ds.SetGeoTransform((
+                x_min, raster.xres, 0,
+                y_max, 0, raster.yres,
+                ))
+
+        # Make the target raster have the same projection as the source raster
+        target_ds.SetProjection(raster.srs.ExportToWkt())
+
+        #loop on features
+        for feat in self.features:
+
+            # Create a memory layer to rasterize from.
+            input_raster = ogr.GetDriverByName('Memory').CreateDataSource('')
+            layer = input_raster.CreateLayer('poly', srs=self.srs)
+
+            # Add polygon
+    #        feat = ogr.Feature(layer.GetLayerDefn())
+    #        feat.SetGeometry(feature.GetGeometryRef())
+            layer.CreateFeature(feat)
+
+            # Rasterize
+            err = gdal.RasterizeLayer(target_ds, [1], layer,burn_values=[feat.GetField(attr)])
+
+            if err != 0:
+                raise Exception("error rasterizing layer: %s" % err)
+
+            # Read mask raster as arrays
+            bandmask = target_ds.GetRasterBand(1)
+            datamask = bandmask.ReadAsArray(0, 0, ysize, xsize)
+
+
+            # import pylab as pl
+            # pl.imshow(datamask)
+            # pl.colorbar()
+            # pl.show()
+
+        return datamask
+
+
+    def get_extent_projected(self,pyproj_obj):
+        """ Return vector extent in a projected coordinate system.
+
+        This is particularly useful for converting vector extent to the 
+        coordinate system of a Basemap instance.
+
+        Parameters:
+            pyproj_obj : A pyproj instance (such as a Basemap instance) of the
+                system to convert into.
+
+        Returns:
+            (left,right,bottom,top)
+
+        """
+        xll,xur,yll,yur = self.extent
+
+        left,bottom = pyproj_obj(xll,yll)
+        right,top = pyproj_obj(xur,yur)
+        return (left,right,bottom,top)
+
+
+
 
 class Shape():
 
@@ -521,7 +641,7 @@ class Shape():
                 self.read()
 
 
-        def draw(self, **kwargs):
+        def draw(self, ax='none', **kwargs):
             """
             Draw the shape using the matplotlib.path.Path and matplotlib.patches.PathPatch classes
             **kwargs : any optional argument accepted by the matplotlib.patches.PathPatch class, e.g.
@@ -537,11 +657,13 @@ class Shape():
 
 #            fig = pl.figure()
 #            ax=fig.add_subplot(111)
-            ax = pl.gca()
+            if ax=='none':
+                ax = pl.gca()
             ax.add_patch(patch)
             ax.set_xlim(xmin,xmax)
             ax.set_ylim(ymin,ymax)
 
+            return patch
 
         def read(self):
             """
@@ -552,7 +674,9 @@ class Shape():
 
             vertices = []
             codes = []
-            if self.geom.GetGeometryCount()>0:
+
+            #POLYGONS
+            if self.geom.GetGeometryName()=='POLYGON':
                 for i in xrange(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
                     for j in xrange(poly.GetPointCount()):
@@ -563,6 +687,157 @@ class Shape():
                             codes.append(Path.CLOSEPOLY)
                         else:
                             codes.append(Path.LINETO)
+        
+            elif self.geom.GetGeometryName()=='MULTIPOLYGON':
+                for i in xrange(self.geom.GetGeometryCount()):
+                    poly = self.geom.GetGeometryRef(i)
 
-                self.vertices = vertices   #list of vertices
-                self.path = Path(vertices,codes)  #used for plotting
+                    for j in xrange(poly.GetGeometryCount()):
+                        ring = poly.GetGeometryRef(j)
+                        for k in xrange(ring.GetPointCount()):
+                            vertices.append([ring.GetX(k),ring.GetY(k)])
+                            if k==0:
+                                codes.append(Path.MOVETO)
+                            elif k==ring.GetPointCount()-1:
+                                codes.append(Path.CLOSEPOLY)
+                            else:
+                                codes.append(Path.LINETO)
+    
+            #LINESTRING
+            elif self.geom.GetGeometryName()=='LINESTRING':
+                for j in xrange(self.geom.GetPointCount()):
+                    vertices.append([self.geom.GetX(j),self.geom.GetY(j)])
+                    if j==0:
+                        codes.append(Path.MOVETO)
+                    else:
+                        codes.append(Path.LINETO)
+
+            #MULTILINESTRING
+            elif self.geom.GetGeometryName()=='MULTILINESTRING':
+                for i in xrange(self.geom.GetGeometryCount()):
+                    poly = self.geom.GetGeometryRef(i)
+                    for k in xrange(poly.GetPointCount()):
+                        vertices.append([poly.GetX(k),poly.GetY(k)])
+                        if k==0:
+                            codes.append(Path.MOVETO)
+                        else:
+                            codes.append(Path.LINETO)
+
+            else:
+                print "Geometry type %s not implemented" %self.geom.GetGeometryName()
+                sys.exit(1)
+
+            self.vertices = vertices   #list of vertices
+            self.codes = codes
+            self.path = Path(vertices,codes)  #used for plotting
+
+        def draw_on_map(self,m,ax='none', **kwargs):
+            """
+            Draw the shape using the matplotlib.path.Path and matplotlib.patches.PathPatch classes
+            **kwargs : any optional argument accepted by the matplotlib.patches.PathPatch class, e.g.
+            - edgecolor : mpl color spec, or None for default, or ‘none’ for no color
+            - facecolor : mpl color spec, or None for default, or ‘none’ for no color
+            - lw : linewidth, float or None for default
+            - alpha : transparency, float or None
+            """
+            
+            #Convert coordinates to Basemap coordinates
+            vertices = []
+            for vertice in self.vertices:
+                x,y = vertice
+                vertices.append(m(x,y))
+
+            #create patch
+            path = Path(vertices,self.codes)
+            patch = PathPatch(path,**kwargs)
+
+            #Get extent
+            xmin,xmax,ymin,ymax = self.extent
+            xmin, ymin = m(xmin,ymin)
+            xmax, ymax = m(xmax,ymax)
+
+            #plot
+            if ax=='none':
+                ax = pl.gca()
+            ax.add_patch(patch)
+            ax.set_xlim(xmin,xmax)
+            ax.set_ylim(ymin,ymax)
+
+            return patch
+
+        def rasterize(self,srs,pixel_size,extent='default'):
+            
+            # Create a memory raster to rasterize into.
+            if extent=='default':
+                xmin, xmax, ymin, ymax = self.extent
+            else:
+                xmin, xmax, ymin, ymax = extent
+            xsize = int((xmax-xmin)/pixel_size)
+            ysize = int((ymax-ymin)/pixel_size)
+            target_ds = gdal.GetDriverByName('MEM').Create( '', xsize, ysize, bands=1,eType=gdal.GDT_Byte)
+            target_ds.SetGeoTransform((xmin,pixel_size,0,ymax,0,-pixel_size))
+            target_ds.SetProjection(srs.ExportToWkt())
+
+            # Create a memory layer to rasterize from.
+            input_raster = ogr.GetDriverByName('Memory').CreateDataSource('')
+            layer = input_raster.CreateLayer('poly', srs=srs)
+            
+            # Add polygon
+            feat = ogr.Feature(layer.GetLayerDefn())
+            feat.SetGeometry(self.geom)
+            layer.CreateFeature(feat)
+        
+            # Rasterize
+            err = gdal.RasterizeLayer(target_ds, [1], layer,burn_values=[255])
+
+            if err != 0:
+                raise Exception("error rasterizing layer: %s" % err)
+
+            # Read mask raster as arrays
+            bandmask = target_ds.GetRasterBand(1)
+            mask = bandmask.ReadAsArray(0, 0, xsize, ysize)
+
+            trans = target_ds.GetGeoTransform()
+            shape = (xsize, ysize)
+            x = np.array(np.linspace(trans[0],(trans[0]+(xsize*trans[1])),xsize).tolist() * ysize).reshape(shape)
+            y = np.array(np.linspace(trans[3],(trans[3]+(ysize*trans[5])),ysize).tolist() * xsize).reshape(shape[::-1]).T
+            
+            return mask, x, y
+
+
+        def centerline(self,srs,pixel_size):
+            """
+            Create a raster of the shape and display to help user drawing the centerline
+            srs : OSR SpatialReference, used for rasterization
+            pixel_size : size of the raster pixel
+            Outputs :
+                x and y coordinates of the user clicks
+            """
+
+            # Create a binary raster of the shape
+            mask, xx, yy = self.rasterize(srs,pixel_size)
+
+            # Fill small holes on mask, e.g supraglacial lakes
+            mask_fill = ndimage.binary_opening(mask,iterations=2)
+            
+            # Compute the skeleton of the mask to help user
+            skel = morphology.skeletonize(mask_fill > 0).astype('float32')
+            skel[skel==0] = np.nan
+
+            # Show mask and skeleton
+            pl.imshow(mask_fill,cmap=pl.get_cmap('Greys_r'))
+            pl.imshow(skel)
+
+            #User click to create profile
+            print("Select your profile")
+            coords=pl.ginput(n=0,timeout=0)
+            
+            #Convert to list of indices
+            coords = np.int32(coords)
+            coords = np.transpose(coords)
+            coords = (coords[0],coords[1])
+
+            return xx[coords], yy[coords]
+
+                      
+                      

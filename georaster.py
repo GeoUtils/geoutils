@@ -109,6 +109,18 @@ import mpl_toolkits.basemap.pyproj as pyproj
 # See http://trac.osgeo.org/gdal/wiki/PythonGotchas
 gdal.UseExceptions()
 
+"""
+Information on map -> pixel conversion
+
+We use the formulas :
+Xgeo = g0 + Xpixel*g1 + Ypixel*g2
+Ygeo = g3 + Xpixel*g4 + Ypixel*g5
+where g = ds.GetGeoTransform()
+given on http://www.gdal.org/gdal_datamodel.html
+
+(Xgeo, Ygeo) is the position of the upper-left corner of the cell, so the cell center is located at position (Xpixel+0.5,Ypixel+0.5)
+"""
+
 class __Raster:
     """
     Attributes:
@@ -141,8 +153,12 @@ class __Raster:
 
     def _load_ds(self,ds_filename):
         """ Load link to data file and set up georeferencing """
-        self.ds_file = ds_filename
-        self.ds = gdal.Open(ds_filename)
+        if isinstance(ds_filename,str):  #input arg is file name
+            self.ds_file = ds_filename
+            self.ds = gdal.Open(ds_filename,0)
+        elif isinstance(ds_filename,gdal.Dataset):  #input arg is gdal dataset
+            self.ds = ds_filename
+            self.ds_file = ds_filename.GetDescription()
 
         if self.ds.GetProjection() == '':
             print 'Specified image does not have any associated \
@@ -152,6 +168,19 @@ class __Raster:
         trans = self.ds.GetGeoTransform()
         self.extent = (trans[0], trans[0] + self.ds.RasterXSize*trans[1], 
                        trans[3] + self.ds.RasterYSize*trans[5], trans[3])
+
+        #Pixel size
+        self.xres = trans[1]
+        self.yres = trans[5]
+
+        #Raster size
+        self.nx = self.ds.RasterXSize
+        self.ny = self.ds.RasterYSize
+        
+        #Offset of the first pixel (non-zero if only subset is read)
+        self.x0 = 0
+        self.y0 = 0
+
         self.srs = osr.SpatialReference()
         self.srs.ImportFromWkt(self.ds.GetProjection())
 
@@ -203,7 +232,7 @@ class __Raster:
 
 
 
-    def coord_to_px(self,x,y,latlon=False):
+    def coord_to_px(self,x,y,latlon=False,rounded=True):
         """ Convert x,y coordinates into pixel coordinates of raster.
 
         x,y may be either in native coordinate system of raster or lat/lon.
@@ -212,6 +241,7 @@ class __Raster:
             x : float, x coordinate to convert.
             y : float, y coordinate to convert.
             latlon : boolean, default False. Set as True if bounds in lat/lon.
+            rounded : if set to True, return the rounded pixel coordinates, otherwise return the float values
 
         Returns:
             (x_pixel,y_pixel)
@@ -228,6 +258,10 @@ class __Raster:
         if latlon == True and self.proj <> None:
             x,y = self.proj(x,y)
 
+        # Shift to the center of the pixel
+        x = np.array(x-self.xres/2)
+        y = np.array(y-self.yres/2)
+
         g0, g1, g2, g3, g4, g5 = self.ds.GetGeoTransform()
         if g2 == 0:
             xPixel = (x - g0) / float(g1)
@@ -236,26 +270,24 @@ class __Raster:
             xPixel = (y*g2 - x*g5 + g0*g5 - g2*g3) / float(g2*g4 - g1*g5)
             yPixel = (x - g0 - xPixel*g1) / float(g2)
 
+        #Round if required
+        if rounded==True:
+            xPixel = np.round(xPixel)
+            yPixel = np.round(yPixel)
+
         # Check that pixel location is not outside image dimensions
         nx = self.ds.RasterXSize
         ny = self.ds.RasterYSize
 
-        xPixel = int(round(xPixel))
-        yPixel = int(round(yPixel))
-
-        xPixel_new = min(xPixel,nx)
-        yPixel_new = min(yPixel,ny)
-
-        xPixel_new = max(xPixel_new,0)
-        yPixel_new = max(yPixel_new,0)
-
-        if xPixel_new!=xPixel:
-                print "Warning : longitude %f is out of domain for file %s" %(x,self.ds_file)
-                raise ValueError("longitude %f is out of domain for file %s" %(x,self.ds_file))
-
-        if yPixel_new!=yPixel:
-                print "Warning : latitude %f is out of domain for file %s" %(y,self.ds_file)
-                raise ValueError("Warning : latitude %f is out of domain for file %s" %(y,self.ds_file))
+        xPixel_new = np.copy(xPixel)
+        yPixel_new = np.copy(yPixel)
+        xPixel_new = np.fmin(xPixel_new,nx)
+        yPixel_new = np.fmin(yPixel_new,ny)
+        xPixel_new = np.fmax(xPixel_new,0)
+        yPixel_new = np.fmax(yPixel_new,0)
+        
+        if np.any(xPixel_new!=xPixel) or np.any(yPixel_new!=yPixel):
+            print "Warning : some points are out of domain for file %s" %(self.ds_file)
 
         return xPixel_new, yPixel_new
 
@@ -291,7 +323,7 @@ class __Raster:
         # readAsArray implementation.    
         xpx1,ypx1 = self.coord_to_px(left,bottom,latlon=latlon)
         xpx2,ypx2 = self.coord_to_px(right,top,latlon=latlon)
-
+        
         if xpx1 > xpx2:
             xpx1, xpx2 = xpx2, xpx1
         if ypx1 > ypx2:
@@ -306,15 +338,19 @@ class __Raster:
         if y_offset == 0: y_offset = 1
 
         # Read array and return
-        arr = self.ds.GetRasterBand(band).ReadAsArray(xpx1,ypx1,
-                                                      x_offset,y_offset)
+        arr = self.ds.GetRasterBand(band).ReadAsArray(int(xpx1),int(ypx1),
+                                                      int(x_offset),int(y_offset))
+
+        # Update image size
+        self.nx, self.ny = int(x_offset),int(y_offset) #arr.shape
+        self.x0 = int(xpx1)
+        self.y0 = int(ypx1)
 
         if extent == True:
             # (top left x, w-e px res, 0, top left y, 0, n-s px res)
             trans = self.ds.GetGeoTransform() 
-            if latlon == True and self.proj <> None:
-                left,top = self.proj(left,top)
-            # (left,right,bottom,top)
+            left = trans[0] + xpx1*trans[1]
+            top = trans[3] + ypx1*trans[5]
             extent = (left, left + x_offset*trans[1], 
                        top + y_offset*trans[5], top)
             return (arr,extent)
@@ -401,6 +437,9 @@ class __Raster:
             xo = 1
             yo = 1
 
+        #Make sure coordinates are int
+        xpx = int(xpx)
+        ypx = int(ypx)
 
         # Get values for all bands
         if band == None:
@@ -435,23 +474,41 @@ class __Raster:
 
     
 
-    def coordinates(self):
-        """ Calculate x and y coordinates for every pixel. 
+    def coordinates(self,Xpixels=None,Ypixels=None,latlon=False):
+        """ Calculate projected (or geographic) coordinates for specified pixels.
+        if Xpixels=None and Ypixels=None (default), a grid with all coordinates is returned
+        if latlon=True, return the lat/lon coordinates
 
         Parameters:
-            None.
+            Xpixels : float or array, x-index of the pixels
+            Ypixels : float or array, y-index of the pixels
+            latlon : bool, if set to True, lat/lon coordinates are returned
         Returns:
-            (x,y) : tuple, containing 1-d numpy array for each of x and y.
-            
+            (Xgeo,Ygeo) : tuple, containing 1-d numpy arrays of each coordinates            
         """
-        trans = self.ds.GetGeoTransform()
-        if self.ds.RasterCount > 1:
-            shape = self.r.shape[0:2]
+        
+        if np.size(Xpixels) != np.size(Ypixels):
+            print "Xpixels and Ypixels must have the same size"
+            return 1
+
+        if (Xpixels==None) & (Ypixels==None):
+            Xpixels = np.arange(self.nx)
+            Ypixels = np.arange(self.ny)
+            Xpixels, Ypixels = np.meshgrid(Xpixels,Ypixels)
         else:
-            shape = self.r.shape
-        x = np.array(np.linspace(trans[0],(trans[0]+(self.ds.RasterXSize*trans[1])),self.ds.RasterXSize).tolist() * self.ds.RasterYSize).reshape(shape)
-        y = np.array(np.linspace(trans[3],(trans[3]+(self.ds.RasterYSize*trans[5])),self.ds.RasterYSize).tolist() * self.ds.RasterXSize).reshape(shape[::-1]).T
-        return (x,y)
+            Xpixels = np.array(Xpixels)
+            Ypixels = np.array(Ypixels)
+            
+        # + self.x0 is for offset if only a subset ahas been read
+        # coordinates are at centre-cell, therefore the +0.5
+        trans = self.ds.GetGeoTransform()
+        Xgeo = trans[0] + (Xpixels+self.x0+0.5)*trans[1] + (Ypixels+self.y0+0.5)*trans[2]
+        Ygeo = trans[3] + (Xpixels+self.x0+0.5)*trans[4] + (Ypixels+self.y0+0.5)*trans[5]
+
+        if latlon==True:
+            Xgeo, Ygeo = self.proj(Xgeo,Ygeo,inverse=True)
+
+        return (Xgeo,Ygeo)
 
 
 
@@ -485,8 +542,83 @@ class __Raster:
         return xres, yres
 
 
+    def reproject(self,target_srs,nx,ny,xmin,ymax,xres,yres,dtype=gdal.GDT_Float32,nodata=None,interp_type=gdal.GRA_NearestNeighbour):
+        """
+        Reproject and resample a GDAL dataset into another spatial reference system.
+        Input arguments :
+        - target_srs : Sptial Reference System to reproject to
+        - nx, ny : int, size of the output raster
+        - xmin, ymax : f, coordinates of the corners
+        - xres, yres : f, pixel size
+        - dtype : gdal.GTD_* data type (e.g GDT_Byte, GDT_Int32, GDT_Float64...) default is GDT_Float32
+        - nodata : f, no data value in the input raster, default is None
+        - interp_type : gdal.GRA_* interpolation algorithm (e.g GRA_NearestNeighbour, GRA_Bilinear, GRA_CubicSpline...), default is GRA_NearestNeighbour
+        """
+        # Create an in-memory raster
+        mem_drv = gdal.GetDriverByName( 'MEM' )
+        target_ds = mem_drv.Create('', nx, ny, 1, dtype)
+
+        # Set the new geotransform
+        new_geo = ( xmin, xres, 0, \
+                    ymax, 0    , yres )
+        target_ds.SetGeoTransform(new_geo)
+        target_ds.SetProjection(target_srs.ExportToWkt())
+    
+        # Set the no data value
+        if nodata!=None:
+            inBand = self.ds.GetRasterBand(1)
+            inBand.SetNoDataValue(nodata)
+    
+        # Perform the projection/resampling 
+        res = gdal.ReprojectImage(self.ds, target_ds, self.srs.ExportToWkt(), target_srs.ExportToWkt(), interp_type)
+    
+        # Load data
+        band = target_ds.GetRasterBand(1)
+        data = band.ReadAsArray(0, 0, nx, ny)
+    
+        # Set no data points to nodata value
+        if nodata!=None:
+            data[data==0] = nodata
+    
+        return data
 
 
+    def interp(self,x,y,order=1,latlon=False):
+        """
+        Interpolate raster at points (x,y). Values are extracted from self.r rather than the file itself, so if changes have been made to self.r, they will apply.
+        x,y may be either in native coordinate system of raster or lat/lon.
+        
+        WARNING : For now, values are considered as known at the upper-left corner, whereas it should be in the centre of the cell.
+
+        Parameters:
+            x : float or array, x coordinate(s) to convert.
+            y : float or array, y coordinate(s) to convert.
+            order : order of the spline interpolation (range 0-5), 0 : nearest-neighbor, 1 : bilinear (default), 2-5 does not seem to work with NaNs
+            latlon : boolean, default False. Set as True if bounds in lat/lon.
+
+        Returns:
+            z_interp, interpolated raster values, same shape as lon and lat
+        """
+
+        # Get x,y coordinates in the matrix grid
+        xpx1, ypx1 = self.coord_to_px(x,y,latlon=latlon,rounded=False)
+        xi = xpx1 - self.x0
+        yi = ypx1 - self.y0
+
+        #Case coordinates are not an array
+        if np.rank(xi)<1:
+            xi = np.array([xi,])
+            yi = np.array([yi,])
+            
+        # Check that pixel location is not outside image dimensions
+        if np.any(xi<0) or np.any(xi>=self.ny) or np.any(yi<0) or np.any(y>=self.nx):
+            print('Warning : some of the coordinates are not in dataset extent -> extrapolated value set to 0')
+
+
+        #interpolated data
+        z_interp = ndimage.map_coordinates(self.r, [yi, xi],order=order)
+
+        return z_interp
 
 
 
@@ -738,16 +870,17 @@ class MultiBandRaster(__Raster):
 
 
 
-def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None,mask=None):
+def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None,mask=None,dtype=gdal.GDT_Float32):
     """ Save a GeoTIFF.
     
     Inputs:
-        outfile : filename to save image to
+        outfile : filename to save image to, if 'none', returns a memory raster
         raster : nbands x r x c
         geoTransform : tuple (top left x, w-e cell size, 0, top left y, 0, n-s cell size (-ve))
         One of proj4 or wkt :
             proj4 : a proj4 string
             wkt : a WKT projection string
+        dtype : gdal.GDT type (Byte : 1, Int32 : 5, Float32 : 6)
 
     -999 is specified as the NoData value.
 
@@ -775,8 +908,12 @@ def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None,mask=No
         xdim = raster.shape[1]
          
     # Setup geotiff file.
-    driver = gdal.GetDriverByName("GTiff")
-    dst_ds = driver.Create(outfile, xdim, ydim, nbands, gdal.GDT_Float32)
+    if outfile!='none':
+        driver = gdal.GetDriverByName("GTiff")
+    else:
+        driver = gdal.GetDriverByName('MEM')
+
+    dst_ds = driver.Create(outfile, xdim, ydim, nbands, dtype)
     # Top left x, w-e pixel resolution, rotation, top left y, rotation, n-s pixel resolution
     dst_ds.SetGeoTransform(geoTransform)
       
@@ -800,9 +937,13 @@ def simple_write_geotiff(outfile,raster,geoTransform,wkt=None,proj4=None,mask=No
         if mask <> None:
             dst_ds.GetRasterBand(1).GetMaskBand().WriteArray(mask)
 
-    # Close data set
-    dst_ds = None
-    return True 
+    if outfile!='none':
+        # Close data set
+        dst_ds = None
+        return True 
+    
+    else:
+        return dst_ds
 
 
 

@@ -243,7 +243,8 @@ class Map:
 
 
 
-    def geo_ticks(self,mstep,pstep,rotate_parallels=False):
+    def geo_ticks(self,mstep,pstep,rotate_parallels=False,
+                    mlabels=(0,0,0,1),plabels=(1,0,0,0)):
         """
         Add geographic (latlon) ticks to plot.
 
@@ -257,17 +258,18 @@ class Map:
         m1 = int(lonur/mstep+1)*mstep
         p0 = int(latll/pstep)*pstep
         p1 = int(latur/pstep+1)*pstep
+
         
-        parallels = self.map.drawparallels(np.arange(p0,p1,pstep),labels=[1,0,0,0],
+        parallels = self.map.drawparallels(np.arange(p0,p1,pstep),labels=plabels,
             linewidth=0.3,zorder=1000)
-        if rotate_parallels == True:
+        if rotate_parallels == True and 1 in plabels:
             # Rotate text labels for parallels to save space
             for k,p in parallels.iteritems():
                 # p[1][0] is a text instance
                 item = p[1][0]
                 item.set_rotation('vertical')
         
-        self.map.drawmeridians(np.arange(m0,m1,mstep),labels=[0,0,0,1],
+        self.map.drawmeridians(np.arange(m0,m1,mstep),labels=mlabels,
             linewidth=0.5,zorder=1000)
 
 

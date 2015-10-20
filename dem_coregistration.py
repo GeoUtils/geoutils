@@ -112,12 +112,12 @@ def coregistration(master_dem,slave_dem,plot=False):
 
     return east, north, c
 
-def deramping(diff,X,Y):
+def deramping(diff,X,Y,plot=False):
 
   #filter outliers
   med = np.median(diff[np.isfinite(diff)])
   mad=1.4826*np.median(np.abs(diff[np.isfinite(diff)]-med))
-  diff[np.abs(diff)>3*mad] = np.nan
+#  diff[np.abs(diff)>3*mad] = np.nan
 
   #Least square fit   
   def peval(X,Y,p):
@@ -135,11 +135,12 @@ def deramping(diff,X,Y):
   plsq = leastsq(residuals, (0,0,0), args = (z,x,y),full_output = 1)
   zfit = peval(X,Y,plsq[0])
 
-  pl.figure('before')
-  pl.imshow(diff,vmin=-4,vmax=4,cmap=pl.get_cmap('RdBu'))
-  pl.figure('after')
-  pl.imshow(diff-zfit,vmin=-4,vmax=4,cmap=pl.get_cmap('RdBu'))
-  pl.show()
+  if plot==True:
+    pl.figure('before')
+    pl.imshow(diff,vmin=-4,vmax=4,cmap=pl.get_cmap('RdBu'))
+    pl.figure('after')
+    pl.imshow(diff-zfit,vmin=-4,vmax=4,cmap=pl.get_cmap('RdBu'))
+    pl.show()
 
   return zfit
   
@@ -161,6 +162,7 @@ if __name__=='__main__':
     parser.add_argument('-n1', dest='nodata1', type=str, default='none', help='int, no data value for master DEM if not specified in the raster file (default read in the raster file)')
     parser.add_argument('-n2', dest='nodata2', type=str, default='none', help='int, no data value for slave DEM if not specified in the raster file (default read in the raster file)')
     parser.add_argument('-zmax', dest='zmax', type=str, default='none', help='float, points with altitude below zmax are used to vertically align the DEMs, to be used to filter out points with snow (default none)')
+    parser.add_argument('-resmax', dest='resmax', type=str, default='none', help='float, maximum value of the residuals, points where |dh|>resmax are considered as outliers and removed (default none)')
 
 
     args = parser.parse_args()
@@ -203,6 +205,9 @@ if __name__=='__main__':
         mask = raster.SingleBandRaster(args.maskfile)
         master_dem.r[mask.r>1] = np.nan
 
+    #filter outliers
+    if args.resmax!='none':
+      master_dem.r[np.abs(master_dem.r-dem2coreg)>float(args.resmax)] = np.nan
 
     #Set master DEM grid for later resampling
     xgrid = np.arange(master_dem.nx)
@@ -252,12 +257,16 @@ if __name__=='__main__':
 
         dem2coreg = znew    
 
+    print "Final Offset in pixels : (%f,%f)" %(yoff,xoff)
+
     #Deramping
     print "deramping"
     diff = dem2coreg-master_dem.r
+    
     if args.zmax!='none':
       diff[master_dem.r>int(args.zmax)] = np.nan
-    ramp = deramping(diff,X,Y)
+
+    ramp = deramping(diff,X,Y,plot=args.plot)
     dem2coreg-=ramp
 
     #Display results

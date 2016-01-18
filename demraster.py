@@ -250,3 +250,50 @@ class DEMRaster(__Raster):
         
             
 
+    def altitudinal_analysis(self,indata,alt_bins,operators=(np.mean,),srcnodata=np.nan,plot=False,ylim='default'):
+        """
+        Perform an altitude analysis of indata.
+        For each altitude bin alt_bins, compute the statistics defined by the operators (default is np.mean)
+        Optionally, display a plot of the distribution of mean and std as a function of altitude
+        Arguments :
+        - indata : np.array, data to be analysed, must have same shape as self.r
+        - alt_bins : array, the altitude intervalls for the analysis
+        - operators : list of operators to compute the statistics (e.g : np.mean, np.std, np.min...), default is np.mean
+        - srcnodata : f, no data value for input
+        - plot : bool, if set to True display a plot of the distribution of mean and std as a function of altitude
+        - ylim : the y limits for the plot
+        Outputs :
+        - stats : np.array, (operators size) x (alt_bins size -1), contains each statistics for each altitude intervall
+        """
+
+        nz = len(alt_bins)-1
+        nstats = len(operators)
+        stats = np.nan*np.zeros((nstats,nz))
+
+        for i in xrange(nz):
+            data = indata[(self.r>alt_bins[i]) & (self.r<=alt_bins[i+1])]
+            data = data[np.isfinite(data)];
+            data = data[data!=srcnodata];
+
+            #remove outliers
+            std = np.std(data)
+            mean = np.mean(data)
+            data = data[(data>mean-3*std) & (data<mean+3*std)]
+
+            #Compute statistics
+            if len(data)!=0:
+                for k in xrange(len(operators)):
+                    stats[k,i] = operators[k](data)
+
+        #Plot
+        if plot==True:
+            alt_mid = (alt_bins + np.roll(alt_bins,-1))/2  #Intervall midpoint
+            x = alt_mid[:-1]
+            xerr = x-alt_bins[:-1]   #Intervall half-width
+
+            pl.errorbar(x,stats[0],xerr=xerr,yerr=stats[1],fmt='o',color='k') #display with error bars
+            pl.hlines(0,np.min(x-xerr),np.max(x+xerr),linestyles='dashed')
+            if ylim!='default':
+                pl.ylim(ylim)
+
+        return stats

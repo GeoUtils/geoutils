@@ -163,8 +163,8 @@ class DEMRaster(__Raster):
             distx[:,0] = distx[:,1]
             disty[0] = disty[1]
         else:
-            print "Need implementation for projected systems"
-            sys.exit(1)
+            distx = np.abs(self.xres)
+            disty = np.abs(self.yres)
 
         #Compute z gradients
         f1 = np.array([[-1,0,1],[-2,0,2],[-1,0,1]])

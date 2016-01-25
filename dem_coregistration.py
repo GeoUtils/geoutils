@@ -30,10 +30,10 @@ def grad2d(dem):
   '''
 
 #  I = ndimage.gaussian_filter(dem,0.333)
-  g1, g2 = np.gradient(dem)
+  g2, g1 = np.gradient(dem) # in Python, x and y axis reversed
 
   slope_pix = np.sqrt(g1**2 + g2**2)
-  aspect = np.arctan2(g2,g1)
+  aspect = np.arctan2(-g1,g2)    #aspect=0 when slope facing north
   aspect = aspect+np.pi
 
   return slope_pix,aspect
@@ -107,8 +107,8 @@ def coregistration(master_dem,slave_dem,plot=False):
         pl.show()
 
     a,b,c = plsq[0]
-    east = a*np.cos(b)
-    north = a*np.sin(b)
+    east = a*np.sin(b)     #with b=0 when north (origin=y-axis)
+    north = a*np.cos(b)
 
     return east, north, c
 
@@ -232,13 +232,13 @@ if __name__=='__main__':
 
         #compute offset
         east, north, c = coregistration(master_dem.r,dem2coreg,args.plot)
-        print "Offset in pixels : (%f,%f)" %(east,north)
-        xoff+=north
-        yoff+=east
+        print "#%i - Offset in pixels : (%f,%f)" %(i+1,east,north)
+        xoff+=east
+        yoff+=north
     
         #resample slave DEM in the new grid
-        znew = f(ygrid-yoff,xgrid-xoff)
-        nanval_new = f2(ygrid-yoff,xgrid-xoff)
+        znew = f(ygrid-yoff,xgrid+xoff)    #postive y shift moves south
+        nanval_new = f2(ygrid-yoff,xgrid+xoff)
         
         #remove filled values that have been interpolated
         znew[nanval_new!=0] = np.nan

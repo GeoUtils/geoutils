@@ -250,6 +250,9 @@ if __name__=='__main__':
 
     for i in xrange(args.niter):
 
+	# remove bias
+        dem2coreg-=median
+
         #compute offset
         east, north, c = coregistration(master_dem.r,dem2coreg,args.plot)
         print "#%i - Offset in pixels : (%f,%f)" %(i+1,east,north)

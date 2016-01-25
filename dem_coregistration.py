@@ -137,9 +137,14 @@ def deramping(diff,X,Y,plot=False):
 
   if plot==True:
     pl.figure('before')
-    pl.imshow(diff,vmin=-4,vmax=4,cmap=pl.get_cmap('RdBu'))
+    pl.imshow(diff,vmin=-4,vmax=4)
+    pl.colorbar()
     pl.figure('after')
-    pl.imshow(diff-zfit,vmin=-4,vmax=4,cmap=pl.get_cmap('RdBu'))
+    pl.imshow(diff-zfit,vmin=-4,vmax=4)
+    pl.colorbar()
+    pl.figure('ramp')
+    pl.imshow(zfit)
+    pl.colorbar()
     pl.show()
 
   return zfit
@@ -168,7 +173,8 @@ if __name__=='__main__':
     args = parser.parse_args()
 
 
-    #Read DEMs
+    ## Read DEMs ##
+    # master
     master_dem = raster.SingleBandRaster(args.master_dem)
     master_dem.r = np.float32(master_dem.r)
     if args.nodata1!='none':
@@ -178,6 +184,7 @@ if __name__=='__main__':
         nodata = band.GetNoDataValue()
         master_dem.r[master_dem.r==nodata] = np.nan
 
+    # slave
     slave_dem = raster.SingleBandRaster(args.slave_dem)
     slave_dem.r = np.float32(slave_dem.r)
     if args.nodata2!='none':
@@ -186,7 +193,7 @@ if __name__=='__main__':
       band=slave_dem.ds.GetRasterBand(1)
       nodata = band.GetNoDataValue()
 
-    #reproject slave DEM into the master DEM spatial reference system
+    ## reproject slave DEM into the master DEM spatial reference system ##
     if master_dem.r.shape!=slave_dem.r.shape:
         band=master_dem.ds.GetRasterBand(1)
         dem2coreg = np.float32(slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=band.DataType, nodata=nodata, interp_type=1))
@@ -196,38 +203,51 @@ if __name__=='__main__':
 
     dem2coreg[dem2coreg==nodata] = np.nan
 
-    #fill NaN values for interpolation
-    nanval = np.isnan(dem2coreg)
-    slave_filled = np.where(np.isnan(dem2coreg),-9999,dem2coreg)
-    
-    #mask points
+    ## mask points ##
     if args.maskfile!='none':
         mask = raster.SingleBandRaster(args.maskfile)
         master_dem.r[mask.r>1] = np.nan
 
-    #filter outliers
+    ## filter outliers ##
     if args.resmax!='none':
       master_dem.r[np.abs(master_dem.r-dem2coreg)>float(args.resmax)] = np.nan
 
-    #Set master DEM grid for later resampling
+    ## Set master DEM grid for later resampling ##
     xgrid = np.arange(master_dem.nx)
     ygrid = np.arange(master_dem.ny)
     X, Y = master_dem.coordinates()
 
 
-    diff_before = master_dem.r-dem2coreg
+    diff_before = dem2coreg-master_dem.r
+
+
+    ## Print out some statistics
+    median = np.median(diff_before[np.isfinite(diff_before)])
+    NMAD_old = 1.4826*np.median(np.abs(diff_before[np.isfinite(diff_before)]-median))
+    print "Statistics on initial dh"
+    print "Median : %f, NMAD : %f" %(median,NMAD_old)
+
+    ## Display
     if args.plot==True:
-      maxval = np.percentile(np.abs(diff_before[np.isfinite(diff_before)]),95)
-      pl.imshow(diff_before,vmin=-2,vmax=2)
+      maxval = 3*NMAD_old #np.percentile(np.abs(diff_before[np.isfinite(diff_before)]),90)
+      pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
       cb=pl.colorbar()
       cb.set_label('Elevation difference (m)')
       pl.show()
 
-    #Create spline function
+    
+    ## fill NaN values for interpolation ##
+    nanval = np.isnan(dem2coreg)
+    slave_filled = np.where(np.isnan(dem2coreg),-9999,dem2coreg)
+    
+    ## Create spline function ##
     f = RectBivariateSpline(ygrid,xgrid, slave_filled,kx=1,ky=1)
     f2 = RectBivariateSpline(ygrid,xgrid, nanval,kx=1,ky=1)
     xoff, yoff = 0,0 
     
+    ## Iterations to estimate DEMs shift
+    print "Iteratively estimate DEMs shift"
+
     for i in xrange(args.niter):
 
         #compute offset
@@ -243,26 +263,25 @@ if __name__=='__main__':
         #remove filled values that have been interpolated
         znew[nanval_new!=0] = np.nan
 
-        #Remove bias
-        # diff = znew-master_dem.r
-        # if args.zmax!='none':
-        #   diff[master_dem.r>int(args.zmax)] = np.nan
-        # ramp = deramping(diff,X,Y)
-        # znew-=ramp
-        # pl.imshow(znew-master_dem.r,vmin=-4,vmax=4,cmap=pl.get_cmap('RdBu'))
-        # pl.show()
-#         bias = np.median(diff[np.isfinite(diff)])
-#         #bias = np.nanmean(diff)
-#         znew-= bias
-
+	# update DEM
         dem2coreg = znew    
 
-    print "Final Offset in pixels : (%f,%f)" %(yoff,xoff)
+	# print some statistics
+        diff = dem2coreg-master_dem.r
+        diff = diff[np.isfinite(diff)]
+        NMAD_new = 1.4826*np.median(np.abs(diff-np.median(diff)))
+        median = np.median(diff)
 
-    #Deramping
+        print "Median : %.2f, NMAD = %.2f, Gain : %.2f%%" %(median,NMAD_new,(NMAD_new-NMAD_old)/NMAD_old*100)
+        NMAD_old = NMAD_new
+
+    print "Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff)
+
+    ### Deramping ###
     print "deramping"
     diff = dem2coreg-master_dem.r
     
+    # remove points above altitude threshold (snow covered areas) and 
     if args.zmax!='none':
       diff[master_dem.r>int(args.zmax)] = np.nan
 
@@ -271,14 +290,14 @@ if __name__=='__main__':
 
     #Display results
     if args.plot==True:
-        diff_after = master_dem.r - dem2coreg
+        diff_after = dem2coreg - master_dem.r
 
         pl.figure('before')
-        pl.imshow(diff_before,vmin=-2,vmax=2)
+        pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
         cb = pl.colorbar()
         cb.set_label('DEM difference (m)')
         pl.figure('after')
-        pl.imshow(diff_after,vmin=-2,vmax=2)
+        pl.imshow(diff_after,vmin=-maxval,vmax=maxval)
         cb = pl.colorbar()
         cb.set_label('DEM difference (m)')
         #pl.show()

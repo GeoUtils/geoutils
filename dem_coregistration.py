@@ -18,6 +18,7 @@ import argparse
 
 #Personal libraries
 import georaster as raster
+from demraster import DEMRaster
 
 #Disable warnings
 import warnings
@@ -175,7 +176,7 @@ if __name__=='__main__':
 
     ## Read DEMs ##
     # master
-    master_dem = raster.SingleBandRaster(args.master_dem)
+    master_dem = DEMRaster(args.master_dem)
     master_dem.r = np.float32(master_dem.r)
     if args.nodata1!='none':
         master_dem.r[master_dem.r==float(args.nodata1)] = np.nan
@@ -284,12 +285,32 @@ if __name__=='__main__':
     print "deramping"
     diff = dem2coreg-master_dem.r
     
-    # remove points above altitude threshold (snow covered areas) and 
+    # remove points above altitude threshold (snow covered areas) 
     if args.zmax!='none':
       diff[master_dem.r>int(args.zmax)] = np.nan
 
+    # remove points with slope higher than 20° that are more error-prone
+    slope, aspect = master_dem.compute_slope()
+    diff[slope>=20*np.pi/180] = np.nan
+    diff[np.isnan(slope)] = np.nan
+
+    # remove outliers
+    med = np.median(diff[np.isfinite(diff)])
+    mad=1.4826*np.median(np.abs(diff[np.isfinite(diff)]-med))
+    diff[np.abs(diff-med)>3*mad] = np.nan
+
+    # estimate a ramp and remove it
     ramp = deramping(diff,X,Y,plot=args.plot)
     dem2coreg-=ramp
+
+    # print some statistics
+    diff = dem2coreg-master_dem.r
+    diff = diff[np.isfinite(diff)]
+    median = np.median(diff)
+    NMAD = 1.4826*np.median(np.abs(diff-median))
+    print "Final DEM"
+    print "Median : %.2f, NMAD = %.2f" %(median,NMAD)
+
 
     #Display results
     if args.plot==True:

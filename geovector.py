@@ -635,7 +635,7 @@ class Shape():
         def __init__(self,feature,load_data=True):
             
             self.feature = feature
-            self.geom = deepcopy(feature.GetGeometryRef()) #deepcopy otherwise the feature can be modified
+            self.geom = feature.GetGeometryRef()
 
             if load_data==True:
                 self.read()

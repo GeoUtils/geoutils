@@ -49,6 +49,7 @@ import re
 import mpl_toolkits.basemap.pyproj as pyproj
 import matplotlib.pyplot as pl
 from scipy.ndimage.filters import gaussian_filter
+from matplotlib.colors import LightSource
 
 from georaster import __Raster
 import geometry as geo
@@ -182,46 +183,42 @@ class DEMRaster(__Raster):
 
 
 
-    def shaded_relief(self,cmap=pl.get_cmap('Greys'),alpha=1,azdeg=100,altdeg=65,asp='default',smoothing=1):
+    def shaded_relief(self,azdeg=225,altdeg=30,cmap=pl.get_cmap('Greys'),alpha=1,aspect=None,smoothing=None,vmin='default',vmax='default'):
         """
         Function to plot a shaded relief of the DEM
-        cmap : object of class Colormap
-        alpha : f, 0 to 1, transparency
-        azdeg : f, azimuth (measured clockwise from south) of the light source in degress for the shaded relief
+        azdeg : f, azimuth (measured anti-clockwise from east) of the light source in degress for the shaded relief
         altdeg : f, altitude (measured up from the plane of the surface) of the light source in degrees
-        asp : f, imshow window aspect, default is set to have orthonormal axis (meters not degree)
+        cmap : object of class Colormap, default 'Greys'
+        alpha : f, 0 to 1, transparency
+        asp : f, imshow window aspect, default is 1
         smoothing : int, apply a gaussian filter of size 'smoothing'. Can be used to reduce noise (Default is none)
+        vmin/vmax : f, setting these values manually can reduce areas of saturation in the plot, default is min/max of the DEM
         """
+        
+        # Smooth elevation
+        if smoothing!=None:
+            data = gaussian_filter(self.r,smoothing)
+        else:
+            data = self.r
 
-        #set asp so that lat/lon spacing are equal
-        if asp=='default':
-            lat0 = self.extent[2]
-            asp = 1/np.cos(np.abs(lat0)*np.pi/180)
+        # mask potential Nan values
+        data = np.ma.masked_array(data,mask=np.isnan(data))
 
-        #compute shaded image
-        x, y = np.gradient(self.r)  
-        slope = np.pi/2. - np.arctan(np.sqrt(x*x + y*y))  
-        aspect = np.arctan2(-x, y)  
-        azrad = azdeg*np.pi / 180.  
-        altituderad = altdeg*np.pi / 180.  
-        shaded = np.sin(altituderad) * np.sin(slope) + np.cos(altituderad) * np.cos(slope)* np.cos(azrad - aspect)  
-        rgb=255*(shaded + 1)/2  
+        # set vmin/vmax value
+        if vmin=='default':
+            vmin = data.min()
+        if vmax=='default':
+            vmax=data.max()
 
-        #Smooth
-        if smoothing!=1:
-            rgb = gaussian_filter(rgb,smoothing)
+        # compute shaded relief
+        ls = LightSource(azdeg=azdeg, altdeg=altdeg)
+        rgb0 = cmap((self.r - vmin) / (vmax - vmin))
+        rgb1 = ls.shade_rgb(rgb0, elevation=data)
 
-        #plot
-        pl.imshow(rgb,vmin=0,vmax=255,extent=self.extent,interpolation='bilinear',cmap=cmap,alpha=alpha,aspect=asp)
+        # plot
+        pl.imshow(rgb1,extent=self.extent,interpolation='bilinear',alpha=alpha,aspect=aspect)
 
-        #other option (more time/memory consuming)
-        # from matplotlib.colors import LightSource
-        # ls = LightSource(azdeg=azdeg,altdeg=altdeg)
-        # rgb = ls.shade(self.r,cmap=cm)  
-        # pl.imshow(rgb,extent=self.extent,interpolation='bilinear',aspect=asp,alpha=alpha)
     
-            
-
     def plot_contours(self,levels='default',c='k',alpha=1,aspect='default'):
         """
         Function to plot a shaded relief of the DEM
@@ -297,3 +294,70 @@ class DEMRaster(__Raster):
                 pl.ylim(ylim)
 
         return stats
+
+
+"""
+Additional shaded relief algorithm
+Copied from http://rnovitsky.blogspot.co.uk/2010/04/using-hillshade-image-as-intensity.html
+Example : 
+> rgb=set_shade(input,cmap=plt.get_cmap('gist_earth'),scale=1.0)
+> plt.imshow(rgb)
+> plt.show()
+
+
+def set_shade(a,intensity=None,cmap=pl.get_cmap('jet'),scale=10.0,azdeg=165.0,altdeg=45.0):
+    ''' sets shading for data array based on intensity layer
+    or the data's value itself.
+    inputs:
+    a - a 2-d array or masked array
+    intensity - a 2-d array of same size as a (no chack on that)
+    representing the intensity layer. if none is given
+    the data itself is used after getting the hillshade values
+    see hillshade for more details.
+    cmap - a colormap (e.g matplotlib.colors.LinearSegmentedColormap
+    instance)
+    scale,azdeg,altdeg - parameters for hilshade function see there for
+    more details
+    output:
+    rgb - an rgb set of the Pegtop soft light composition of the data and 
+    intensity can be used as input for imshow()
+    based on ImageMagick's Pegtop_light:
+    http://www.imagemagick.org/Usage/compose/#pegtoplight'''
+    if intensity is None:
+        # hilshading the data
+        intensity = hillshade(a,scale=scale,azdeg=165.0,altdeg=45.0)
+    else:
+        # or normalize the intensity
+        intensity = (intensity - intensity.min())/(intensity.max() - intensity.min())
+        # get rgb of normalized data based on cmap
+
+    rgb = cmap((a-a.min())/float(a.max()-a.min()))[:,:,:3]
+    # form an rgb eqvivalent of intensity
+    d = intensity.repeat(3).reshape(rgb.shape)
+    # simulate illumination based on pegtop algorithm.
+    rgb = 2*d*rgb+(rgb**2)*(1-2*d)
+    
+    return rgb
+
+
+def hillshade(data,scale=10.0,azdeg=165.0,altdeg=45.0):
+    ''' convert data to hillshade based on matplotlib.colors.LightSource class.
+    input:
+    data - a 2-d array of data
+    scale - scaling value of the data. higher number = lower gradient
+    azdeg - where the light comes from: 0 south ; 90 east ; 180 north ;
+    270 west
+    altdeg - where the light comes from: 0 horison ; 90 zenith
+    output: a 2-d array of normalized hilshade
+    '''
+    # convert alt, az to radians
+    az = azdeg*np.pi/180.0
+    alt = altdeg*np.pi/180.0
+    # gradient in x and y directions
+    dx, dy = np.gradient(data/float(scale))
+    slope = 0.5*np.pi - np.arctan(np.hypot(dx, dy))
+    aspect = np.arctan2(dx, dy)
+    intensity = np.sin(alt)*np.sin(slope) + np.cos(alt)*np.cos(slope)*np.cos(-az - aspect - 0.5*np.pi)
+    intensity = (intensity - intensity.min())/(intensity.max() - intensity.min())
+    return intensity
+"""

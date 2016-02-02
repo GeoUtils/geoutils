@@ -296,6 +296,87 @@ class DEMRaster(__Raster):
         return stats
 
 
+    def along_slope_gradient(self,sigmax,sigmay):
+        """
+        Compute the DEM gradient (=slope) after smoothing the DEM along the slope with a gaussian kernel of size (sigmax, sigmay).
+        Particularly useful to smooth the slope on glaciers without introducing to much errors from the edges.
+        """
+
+        # first smooth gradient, to determine slope direction
+        dem_sm = gaussian_filter(self.r,1)
+        xgrad, ygrad = np.gradient(dem_sm)
+        alpha = np.arctan2(xgrad,ygrad)
+
+        # smooth along slope
+        zsm = np.nan*np.zeros_like(self.r)
+        for i,j in np.transpose(np.where(np.isfinite(self.r))):
+            f = gaussian_kernel(sigmax,sigmay,alpha[i,j])
+            xsize, ysize = f.shape
+            data=self.r[i-xsize/2:i+xsize/2+1,j-ysize/2:j+ysize/2+1]
+            nan=f[np.isfinite(data)]
+            zsm[i,j] = np.nansum((data*f))/np.nansum(nan)
+    
+        
+        # compute final slope
+        if self.srs.IsProjected()==0:
+            lon, lat = self.coordinates()
+            lonr = np.roll(lon,1,1)
+            latl = np.roll(lat,1,0)
+            distx = geo.dist_ortho(lon,lat,lonr,lat)
+            disty = geo.dist_ortho(lon,lat,lon,latl)
+            #singularities at edges
+            distx[:,0] = distx[:,1]
+            disty[0] = disty[1]
+        else:
+            distx = np.abs(self.xres)
+            disty = np.abs(self.yres)
+
+        #Compute z gradients
+        f1 = np.array([[-1,0,1],[-2,0,2],[-1,0,1]])
+        f2 = f1.transpose()
+        g1 = signal.convolve(zsm,f1,mode='same')
+        g2 = signal.convolve(zsm,f2,mode='same')
+        mpm = np.sqrt((g1/distx)**2 + (g2/disty)**2)/8
+        slope = np.arctan(mpm)*180/np.pi
+        
+        return slope
+
+
+def gaussian_kernel(sigmax,sigmay,alpha,fmin=0.01):
+    """
+    Return a normalized gaussian kernel with standard deviation "sigmax" and "sigmay" along the axis rotated by an angle "alpha" in radians. 
+    The size of the matrix is calculated as 3*max(sigmax,sigmay).
+    All elements below fmin are set to 0 and matrix is cut so that no line/row contains only zeros, thus matrix size is not always square.
+    """
+
+    size=np.ceil(max(sigmax,sigmay)*3)
+    size=int(size//2*2+1)  # make it an odd number
+    #if size%2!=1:
+    #    print "size must be an odd number"
+    #    return 0
+
+    # create meshgrid
+    x = np.arange(-size/2,size/2)+1
+    y = np.arange(-size/2,size/2)+1
+    xx, yy = np.meshgrid(x,y)
+
+    # rotate axes
+    xp = xx*np.cos(alpha)+yy*np.sin(alpha)
+    yp = -xx*np.sin(alpha)+yy*np.cos(alpha)
+
+    #compute gaussian kernel
+    f = np.exp(-(xp**2/(2*sigmax**2)+yp**2/(2*sigmay**2)))
+    f = f/np.sum(f)
+
+    # cut the matrix to values higher than 0.01
+    f=f[:,~np.all(f<0.01, axis=0)]
+    f=f[~np.all(f<0.01, axis=1),:]
+    f = f/np.sum(f)
+
+    return f
+
+
+
 """
 Additional shaded relief algorithm
 Copied from http://rnovitsky.blogspot.co.uk/2010/04/using-hillshade-image-as-intensity.html

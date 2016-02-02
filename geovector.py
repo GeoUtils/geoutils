@@ -671,6 +671,7 @@ class Shape():
             """
 
             self.extent = self.geom.GetEnvelope()
+            self.srs = self.geom.GetSpatialReference()
 
             vertices = []
             codes = []
@@ -745,14 +746,24 @@ class Shape():
             vertices = []
             for vertice in self.vertices:
                 x,y = vertice
-                vertices.append(m(x,y))
+                if self.srs.IsProjected():
+                    proj = pyproj.Proj(self.srs.ExportToProj4())
+                    x,y = proj(x,y,inverse=True)  #convert to lat/lon
+                    vertices.append(m(x,y))
+                else:
+                    vertices.append(m(x,y))
 
             #create patch
             path = Path(vertices,self.codes)
             patch = PathPatch(path,**kwargs)
 
             #Get extent
-            xmin,xmax,ymin,ymax = self.extent
+            if self.srs.IsProjected():
+                xmin,xmax,ymin,ymax = self.extent
+                xmin,ymin = proj(xmin,ymin,inverse=True)
+                xmax,ymax = proj(xmax,ymax,inverse=True)
+            else:
+                xmin,xmax,ymin,ymax = self.extent
             xmin, ymin = m(xmin,ymin)
             xmax, ymax = m(xmax,ymax)
 

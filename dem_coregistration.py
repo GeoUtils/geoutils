@@ -164,7 +164,7 @@ if __name__=='__main__':
     #optional arguments
     parser.add_argument('-iter', dest='niter', type=int, default=5, help='int, number of iterations (default: 5)')
     parser.add_argument('-plot', dest='plot', help='Plot processing steps and final results',action='store_true')
-    parser.add_argument('-m', dest='maskfile', type=str, default='none', help='str, path to a mask of same size as the master DEM, to filter out non stable areas such as glaciers (default is none)')
+    parser.add_argument('-m', dest='maskfile', type=str, default='none', help='str, path to a mask of same size as the master DEM, to filter out non stable areas such as glaciers. Points with mask>0 are masked.  (default is none)')
     parser.add_argument('-n1', dest='nodata1', type=str, default='none', help='int, no data value for master DEM if not specified in the raster file (default read in the raster file)')
     parser.add_argument('-n2', dest='nodata2', type=str, default='none', help='int, no data value for slave DEM if not specified in the raster file (default read in the raster file)')
     parser.add_argument('-zmax', dest='zmax', type=str, default='none', help='float, points with altitude below zmax are used to vertically align the DEMs, to be used to filter out points with snow (default none)')
@@ -208,7 +208,7 @@ if __name__=='__main__':
     ## mask points ##
     if args.maskfile!='none':
         mask = raster.SingleBandRaster(args.maskfile)
-        master_dem.r[mask.r>1] = np.nan
+        master_dem.r[mask.r>0] = np.nan
 
     ## filter outliers ##
     if args.resmax!='none':

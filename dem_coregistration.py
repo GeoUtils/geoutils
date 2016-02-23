@@ -197,7 +197,8 @@ if __name__=='__main__':
     ## reproject slave DEM into the master DEM spatial reference system ##
     if master_dem.r.shape!=slave_dem.r.shape:
         band=master_dem.ds.GetRasterBand(1)
-        dem2coreg = np.float32(slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=band.DataType, nodata=nodata, interp_type=1))
+        dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=band.DataType, nodata=nodata, interp_type=1)
+        dem2coreg = np.float32(dem2coreg.r)
 
     else:
         dem2coreg = slave_dem.r

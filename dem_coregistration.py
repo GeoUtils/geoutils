@@ -167,7 +167,8 @@ if __name__=='__main__':
     parser.add_argument('-m', dest='maskfile', type=str, default='none', help='str, path to a mask of same size as the master DEM, to filter out non stable areas such as glaciers. Points with mask>0 are masked.  (default is none)')
     parser.add_argument('-n1', dest='nodata1', type=str, default='none', help='int, no data value for master DEM if not specified in the raster file (default read in the raster file)')
     parser.add_argument('-n2', dest='nodata2', type=str, default='none', help='int, no data value for slave DEM if not specified in the raster file (default read in the raster file)')
-    parser.add_argument('-zmax', dest='zmax', type=str, default='none', help='float, points with altitude below zmax are used to vertically align the DEMs, to be used to filter out points with snow (default none)')
+    parser.add_argument('-zmax', dest='zmax', type=str, default='none', help='float, points with altitude above zmax are masked during the vertical alignment, e.g snow covered areas (default none)')
+    parser.add_argument('-zmin', dest='zmin', type=str, default='none', help='float, points with altitude below zmin are masked during the vertical alignment, e.g points on sea (default none)')
     parser.add_argument('-resmax', dest='resmax', type=str, default='none', help='float, maximum value of the residuals, points where |dh|>resmax are considered as outliers and removed (default none)')
 
 
@@ -289,6 +290,10 @@ if __name__=='__main__':
     # remove points above altitude threshold (snow covered areas) 
     if args.zmax!='none':
       diff[master_dem.r>int(args.zmax)] = np.nan
+
+    # remove points below altitude threshold (e.g sea ice)
+    if args.zmin!='none':
+      diff[master_dem.r<int(args.zmin)] = np.nan
 
     # remove points with slope higher than 20° that are more error-prone
     slope, aspect = master_dem.compute_slope()

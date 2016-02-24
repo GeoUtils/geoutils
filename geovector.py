@@ -530,7 +530,8 @@ Additionally, a number of instances are available in the class.
         """
 
         # Open the raster file
-        xsize, ysize = raster.r.shape
+        xsize = raster.ny
+        ysize = raster.nx
         x_min, x_max, y_min, y_max = raster.extent
     
 

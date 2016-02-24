@@ -183,7 +183,7 @@ class DEMRaster(__Raster):
 
 
 
-    def shaded_relief(self,azdeg=225,altdeg=30,cmap=pl.get_cmap('Greys'),alpha=1,aspect=None,smoothing=None,vmin='default',vmax='default'):
+    def shaded_relief(self,azdeg=225,altdeg=30,cmap=pl.get_cmap('Greys'),alpha=1,aspect=None,smoothing=None,vmin='default',vmax='default',downsampl=1):
         """
         Function to plot a shaded relief of the DEM
         azdeg : f, azimuth (measured anti-clockwise from east) of the light source in degress for the shaded relief
@@ -193,13 +193,19 @@ class DEMRaster(__Raster):
         asp : f, imshow window aspect, default is 1
         smoothing : int, apply a gaussian filter of size 'smoothing'. Can be used to reduce noise (Default is none)
         vmin/vmax : f, setting these values manually can reduce areas of saturation in the plot, default is min/max of the DEM
+        downsampl : int, factor to downsample the matrix if too large
         """
-        
+
         # Smooth elevation
         if smoothing!=None:
             data = gaussian_filter(self.r,smoothing)
         else:
             data = self.r
+
+        # down sample data
+        if downsampl!=1:
+            data = data[::downsampl,::downsampl]
+
 
         # mask potential Nan values
         data = np.ma.masked_array(data,mask=np.isnan(data))
@@ -212,11 +218,13 @@ class DEMRaster(__Raster):
 
         # compute shaded relief
         ls = LightSource(azdeg=azdeg, altdeg=altdeg)
-        rgb0 = cmap((self.r - vmin) / (vmax - vmin))
+        rgb0 = cmap((data - vmin) / (vmax - vmin))
         rgb1 = ls.shade_rgb(rgb0, elevation=data)
 
         # plot
         pl.imshow(rgb1,extent=self.extent,interpolation='bilinear',alpha=alpha,aspect=aspect)
+
+        return rgb1
 
     
     def plot_contours(self,levels='default',c='k',alpha=1,aspect='default'):

@@ -40,24 +40,22 @@ def grad2d(dem):
   return slope_pix,aspect
 
 
-def coregistration(master_dem,slave_dem,plot=False):
+def horizontal_shift(dh,slope,aspect,plot=False):
     """
     Compute the horizontal shift between 2 DEMs using the method presented in Nuth & Kaab 2011
     Inputs :
-    - master_dem and slave_dem are the elevation matrices associated to each DEMs, matrices must have the same size and master_dem is used as the reference for geocoding
+    - dh : array, elevation difference master_dem - slave_dem
+    - slope/aspect : array, slope and aspect for the same locations as the dh
+    Returns :
+    - east, north, c : f, estimated easting and northing of the shift, c is not used here but is related to the vertical shift
     """
 
-    #Elevation difference
-    dh = master_dem - slave_dem
+    # function to be correlated with terrain aspect
+    target = dh/slope
+    target = target[np.isfinite(dh)]
+    aspect = aspect[np.isfinite(dh)]
 
-    #compute terrain aspect
-    slope_pix, aspect = grad2d(master_dem)
-    slope_pix = np.where(np.isnan(dh),np.nan,slope_pix)
-    aspect = np.where(np.isnan(dh),np.nan,aspect)
-    target = dh/slope_pix
-
-
-    #mean by slice
+    # compute median value for different aspect slices
     slice_bounds = np.arange(0,2*np.pi,np.pi/36)
     mean=np.zeros([len(slice_bounds)])
     x_s=np.zeros([len(slice_bounds)])
@@ -114,6 +112,15 @@ def coregistration(master_dem,slave_dem,plot=False):
     return east, north, c
 
 def deramping(diff,X,Y,plot=False):
+  """
+  Estimate a ramp (tilt) in elevation difference between two DEMs.
+  Inputs :
+  - diff : array, elevation difference between the two DEMs
+  - X, Y : arrays, X, Y position of the elevation difference in any system
+  - plot : i f set to True, plots are displayed
+  Returns :
+  - ramp : a function that defines the estimated ramp, if two arguments X,Y are passed, return the value of the ramp at each location
+  """
 
   #filter outliers
   med = np.median(diff[np.isfinite(diff)])
@@ -148,7 +155,10 @@ def deramping(diff,X,Y,plot=False):
     pl.colorbar()
     pl.show()
 
-  return zfit
+  def ramp(X,Y):
+    return peval(X,Y,plsq[0])
+
+  return ramp
   
 
 if __name__=='__main__':
@@ -248,6 +258,10 @@ if __name__=='__main__':
     f2 = RectBivariateSpline(ygrid,xgrid, nanval,kx=1,ky=1)
     xoff, yoff = 0,0 
     
+    ## compute terrain aspect/slope ##
+    slope, aspect = grad2d(master_dem.r)
+
+
     ## Iterations to estimate DEMs shift
     print "Iteratively estimate DEMs shift"
 
@@ -256,8 +270,11 @@ if __name__=='__main__':
 	# remove bias
         dem2coreg-=median
 
+        #Elevation difference
+        dh = master_dem.r - dem2coreg
+
         #compute offset
-        east, north, c = coregistration(master_dem.r,dem2coreg,args.plot)
+        east, north, c = horizontal_shift(dh,slope,aspect,args.plot)
         print "#%i - Offset in pixels : (%f,%f)" %(i+1,east,north)
         xoff+=east
         yoff+=north
@@ -307,7 +324,7 @@ if __name__=='__main__':
 
     # estimate a ramp and remove it
     ramp = deramping(diff,X,Y,plot=args.plot)
-    dem2coreg-=ramp
+    dem2coreg-=ramp(X,Y)
 
     # print some statistics
     diff = dem2coreg-master_dem.r

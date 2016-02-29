@@ -180,7 +180,7 @@ if __name__=='__main__':
     parser.add_argument('-zmax', dest='zmax', type=str, default='none', help='float, points with altitude above zmax are masked during the vertical alignment, e.g snow covered areas (default none)')
     parser.add_argument('-zmin', dest='zmin', type=str, default='none', help='float, points with altitude below zmin are masked during the vertical alignment, e.g points on sea (default none)')
     parser.add_argument('-resmax', dest='resmax', type=str, default='none', help='float, maximum value of the residuals, points where |dh|>resmax are considered as outliers and removed (default none)')
-
+    parser.add_argument('-grid', dest='grid', type=str, default='master', help="'master' or 'slave' : common grid to use for the DEMs (default is master DEM grid)")
 
     args = parser.parse_args()
 
@@ -207,18 +207,28 @@ if __name__=='__main__':
 
     ## reproject slave DEM into the master DEM spatial reference system ##
     if master_dem.r.shape!=slave_dem.r.shape:
-        band=master_dem.ds.GetRasterBand(1)
-        dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=band.DataType, nodata=nodata, interp_type=1)
-        dem2coreg = np.float32(dem2coreg.r)
-
+      if args.grid=='master':
+        print "Reproject slave DEM"
+        dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata, interp_type=1,progress=True).r
+      elif args.grid=='slave':
+        print "Reproject master DEM"
+        master_dem = master_dem.reproject(slave_dem.srs, slave_dem.nx, slave_dem.ny, slave_dem.extent[0], slave_dem.extent[3], slave_dem.xres, slave_dem.yres, dtype=6, nodata=nodata, interp_type=1,progress=True)
+        master_dem = DEMRaster(master_dem.ds)  # convert it to a DEMRaster object for later use of specific functions
+        dem2coreg=slave_dem.r
+      else:
+        sys.exit("Error : grid must be 'master' or 'slave'")
     else:
-        dem2coreg = slave_dem.r
+      dem2coreg = slave_dem.r
 
     dem2coreg[dem2coreg==nodata] = np.nan
 
     ## mask points ##
     if args.maskfile!='none':
         mask = raster.SingleBandRaster(args.maskfile)
+        if master_dem.r.shape!=mask.r.shape:
+          print "Reproject mask"
+          mask = mask.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata, interp_type=1,progress=True)
+
         master_dem.r[mask.r>0] = np.nan
 
     ## filter outliers ##

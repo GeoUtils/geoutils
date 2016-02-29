@@ -312,9 +312,9 @@ if __name__=='__main__':
     if args.zmin!='none':
       diff[master_dem.r<int(args.zmin)] = np.nan
 
-    # remove points with slope higher than 20° that are more error-prone
+    # remove points with slope higher than 40° that are more error-prone
     slope, aspect = master_dem.compute_slope()
-    diff[slope>=20*np.pi/180] = np.nan
+    diff[slope>=40*np.pi/180] = np.nan
     diff[np.isnan(slope)] = np.nan
 
     # remove outliers

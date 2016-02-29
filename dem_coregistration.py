@@ -15,6 +15,8 @@ from scipy.optimize import leastsq
 import matplotlib.pyplot as pl
 from scipy.interpolate import RectBivariateSpline
 import argparse
+import os
+import gdal
 
 #Personal libraries
 import georaster as raster
@@ -181,7 +183,7 @@ if __name__=='__main__':
     parser.add_argument('-zmin', dest='zmin', type=str, default='none', help='float, points with altitude below zmin are masked during the vertical alignment, e.g points on sea (default none)')
     parser.add_argument('-resmax', dest='resmax', type=str, default='none', help='float, maximum value of the residuals, points where |dh|>resmax are considered as outliers and removed (default none)')
     parser.add_argument('-grid', dest='grid', type=str, default='master', help="'master' or 'slave' : common grid to use for the DEMs (default is master DEM grid)")
-
+    parser.add_argument('-save', dest='save', help='Save horizontal offset as a text file and ramp as a GTiff file',action='store_true')
     args = parser.parse_args()
 
 
@@ -309,9 +311,17 @@ if __name__=='__main__':
         NMAD_old = NMAD_new
 
     print "Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff)
-
+    
+    if args.save==True:
+      fname, ext = os.path.splitext(args.outfile)
+      fname+='_shift.txt'
+      f = open(fname,'w')
+      f.write("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
+      f.close()
+      print "Offset saved in %s" %fname
+      
     ### Deramping ###
-    print "deramping"
+    print "Deramping"
     diff = dem2coreg-master_dem.r
     
     # remove points above altitude threshold (snow covered areas) 
@@ -336,6 +346,15 @@ if __name__=='__main__':
     ramp = deramping(diff,X,Y,plot=args.plot)
     dem2coreg-=ramp(X,Y)
 
+    # save to output file
+    if args.save==True:
+      fname, ext = os.path.splitext(args.outfile)
+      fname+='_ramp.TIF'
+      #fname = WD+'/ramp.out'
+      raster.simple_write_geotiff(fname, ramp(X,Y), master_dem.ds.GetGeoTransform(), wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
+      #ramp(X,Y).tofile(fname)
+      print "Ramp saved in %s" %fname
+      
     # print some statistics
     diff = dem2coreg-master_dem.r
     diff = diff[np.isfinite(diff)]

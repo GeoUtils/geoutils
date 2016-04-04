@@ -109,7 +109,7 @@ class DEMRaster(__Raster):
         elif isinstance(load_data,tuple) or isinstance(load_data,list):
             if len(load_data) == 4:
                 (self.r,self.extent) = self.read_single_band_subset(load_data,
-                                        latlon=latlon,extent=True,band=band)
+                                                                    latlon=latlon,extent=True,band=band,update_info=True)
 
         elif load_data == False:
             return
@@ -320,9 +320,14 @@ class DEMRaster(__Raster):
         for i,j in np.transpose(np.where(np.isfinite(self.r))):
             f = gaussian_kernel(sigmax,sigmay,alpha[i,j])
             xsize, ysize = f.shape
-            data=self.r[i-xsize/2:i+xsize/2+1,j-ysize/2:j+ysize/2+1]
-            nan=f[np.isfinite(data)]
-            zsm[i,j] = np.nansum((data*f))/np.nansum(nan)
+            xmin = i-xsize/2
+            xmax = i+xsize/2+1
+            ymin = j-ysize/2
+            ymax = j+ysize/2+1
+            if ((xmin>0) & (xmax<self.r.shape[0]) & (ymin>0) & (ymax<self.r.shape[1])):
+                data=self.r[xmin:xmax,ymin:ymax]
+                nan=f[np.isfinite(data)]
+                zsm[i,j] = np.nansum((data*f))/np.nansum(nan)
     
         
         # compute final slope

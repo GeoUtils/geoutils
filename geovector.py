@@ -628,7 +628,29 @@ Additionally, a number of instances are available in the class.
         right,top = pyproj_obj(xur,yur)
         return (left,right,bottom,top)
 
+    def extract_value_from_raster(self,raster,spacing='none'):
+        """
+        Extract raster values at the location of the feature vertices. Return as many arrays as features in the vector file.
+        """
 
+        interp_values = []
+        XX = []
+        YY = []
+        for feat in self.features:
+            sh = Shape(feat)
+            if spacing=='none':
+                x,y = np.transpose(sh.vertices)
+            else:
+                x,y = sh.regularise(spacing)
+            if not self.srs.IsProjected():
+                temp_values = raster.interp(x,y,latlon=True)
+            else:
+                temp_values = raster.interp(x,y,latlon=False)
+            interp_values.append(temp_values)
+            XX.append(x)
+            YY.append(y)
+
+        return XX, YY, interp_values
 
 
 class Shape():
@@ -856,4 +878,57 @@ class Shape():
             return xx[coords], yy[coords]
 
                       
-                      
+        def regularise(self,spacing):
+            """
+            Regularise the shape so that each vertice is spaced regularly. This will alter the shape, the coarser the spacing, the more the alteration.
+            Inputs :
+            - spacing : f, spacing between two vertices (meters)
+            """
+            
+            # get coordinates
+            x, y = np.transpose(self.vertices)
+            
+            # get previous point coordinates
+            # xp = np.roll(x,1)
+            # yp = np.roll(y,1)
+            
+            #compute distance along profile
+            # if not self.srs.IsProjected():
+            #     ddist = geo.dist_ortho(x,y,xp,yp)
+            #     ddist[0] = 0
+            # else:
+            #     ddist = np.sqrt((x-xp)**2+(y-yp**2))
+            # dist = np.cumsum(ddist)
+            
+            #expand profile every spacing meters
+            new_x, new_y = [], []
+            new_dist = []
+            for i in xrange(len(x)-1):
+
+                #compute distance between point and next
+                if not self.srs.IsProjected():
+                    dist = geo.dist_ortho(x[i],y[i],x[i+1],y[i+1])
+                else:
+                    dist = np.sqrt((x[i+1]-x[i])**2+(y[i+1]-y[i]**2))
+                # number of segments between the two points 
+                xgrad = (x[i+1]-x[i])/dist
+                ygrad = (y[i+1]-y[i])/dist
+                n = int(dist/spacing)
+
+                # create points along the segment that are 'spacing' meters apart
+                if n>=1:
+                    new_x.extend(x[i]+xgrad*spacing*np.arange(n+1))  #x[i] + (x[i+1]-x[i])*np.arange(int(n)+1)/float(n))
+                    new_y.extend(y[i]+ygrad*spacing*np.arange(n+1)) #y[i] + (y[i+1]-y[i])*np.arange(int(n)+1)/float(n))
+                else:
+                    new_x.extend((x[i],))
+                    new_y.extend((y[i],))
+
+                # on way to do but points are not exactly separated by 'spacing'
+                #new_x.extend(np.linspace(x[i],x[i+1],n))
+                #new_y.extend(np.linspace(y[i],y[i+1],n))
+
+                # shift the end of the segment to a multiple of 'spacing' (overdraft may happen)
+                x[i+1] = x[i]+xgrad*spacing*(n+1)  #x[i] + (x[i+1]-x[i])*(n+1)/float(n)
+                y[i+1] = y[i]+ygrad*spacing*(n+1)  #y[i] + (y[i+1]-y[i])*(n+1)/float(n)
+
+            return np.array(new_x), np.array(new_y)

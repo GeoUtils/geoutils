@@ -777,7 +777,7 @@ class Shape():
 
             return patch
 
-        def rasterize(self,srs,pixel_size,extent='default'):
+        def rasterize(self,srs,pixel_size,extent='default',return_coords=False):
             
             # Create a memory raster to rasterize into.
             if extent=='default':
@@ -809,12 +809,16 @@ class Shape():
             bandmask = target_ds.GetRasterBand(1)
             mask = bandmask.ReadAsArray(0, 0, xsize, ysize)
 
-            trans = target_ds.GetGeoTransform()
-            shape = (xsize, ysize)
-            x = np.array(np.linspace(trans[0],(trans[0]+(xsize*trans[1])),xsize).tolist() * ysize).reshape(shape)
-            y = np.array(np.linspace(trans[3],(trans[3]+(ysize*trans[5])),ysize).tolist() * xsize).reshape(shape[::-1]).T
+            if return_coords==True:
+                #trans = target_ds.GetGeoTransform()
+                shape = (ysize, xsize)
+                x = np.array(np.linspace(trans[0],(trans[0]+(xsize*trans[1])),xsize).tolist() * ysize).reshape(shape)
+                y = np.array(np.linspace(trans[3],(trans[3]+(ysize*trans[5])),ysize).tolist() * xsize).reshape(shape[::-1]).T
             
-            return mask, x, y
+                return mask, x, y
+            
+            else:
+                return mask
 
 
         def centerline(self,srs,pixel_size):

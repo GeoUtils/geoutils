@@ -283,7 +283,7 @@ Additionally, a number of instances are available in the class.
         outLayerDefn = outLayer.GetLayerDefn()
 
         # loop through the input features
-        self.layer.GetFeatureCount()  #to read from beginning again
+        ogr.Layer.ResetReading(self.layer)  #to read from beginning again
         inFeature = self.layer.GetNextFeature()
         while inFeature:
             # get the input geometry

@@ -91,8 +91,8 @@ def points_inside_polygon(x,y,poly,skip_holes=False):
 
     #Loop on all sides of the polygon (P1,P2)
     for i in vertex:
-        p1x,p1y = poly[i % n]        
-        p2x,p2y = poly[(i+1) % n]
+        p1x,p1y = poly[(i-1) % n]        
+        p2x,p2y = poly[i % n]
 
         candidates = np.where((y > min(p1y,p2y)) & (y <= max(p1y,p2y)) & (x <= max(p1x,p2x)))[0]
         

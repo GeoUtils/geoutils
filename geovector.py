@@ -233,6 +233,8 @@ Additionally, a number of instances are available in the class.
             for i in xrange(nFeat):
                 #read each feature
                 feat = self.layer.GetNextFeature()
+                if str(feat)=='None':  # in case features are miscounted
+                    continue
                 features.append(feat)
 
                 #read each field associated to the feature
@@ -524,26 +526,43 @@ Additionally, a number of instances are available in the class.
 
         return np.array(median), np.array(std), np.array(count), np.array(frac)
 
-    def create_mask(self,raster):
+    def create_mask(self,raster='none',srs='none',xres='none',yres='none',extent='none'):
         """
-        Return a mask (Byte) of the polygons in self, in the Spatial Reference and resolution of raster
+        Return a mask (array with dtype Byte) of the polygons in self.
+        The spatial reference system of the mask can be set either :
+        - by giving a georaster.__Raster object as input
+        - by specifying the reference system srs, the raster pixel size (xres,yres) and the raster extent
         """
 
-        # Open the raster file
-        xsize = raster.ny
-        ysize = raster.nx
-        x_min, x_max, y_min, y_max = raster.extent
-    
+        if raster=='none':
+            x_min, x_max, y_min, y_max = extent
+            ysize = abs((x_max-x_min)/xres)
+            xsize = abs((y_max-y_min)/yres)
+            print xsize, ysize
+            if xsize%1!=0 or ysize%1!=0:
+                print "ERROR : extent not a multiple of xres/yres"
+                return
+            else:
+                xsize=int(xsize)
+                ysize=int(ysize)
+        else:
+            # Open the raster file
+            xsize = raster.ny
+            ysize = raster.nx
+            x_min, x_max, y_min, y_max = raster.extent
+            xres = raster.xres
+            yres = raster.yres
+            srs = raster.srs
 
         # Create memory target raster
         target_ds = gdal.GetDriverByName('MEM').Create('', ysize, xsize, 1, gdal.GDT_Byte)
         target_ds.SetGeoTransform((
-                x_min, raster.xres, 0,
-                y_max, 0, raster.yres,
+                x_min, xres, 0,
+                y_max, 0, yres,
                 ))
     
-        # Make the target raster have the same projection as the source raster
-        target_ds.SetProjection(raster.srs.ExportToWkt())
+        # Set the target raster's projection
+        target_ds.SetProjection(srs.ExportToWkt())
 
         # Rasterize
         err = gdal.RasterizeLayer(target_ds, [1], self.layer,burn_values=[255])

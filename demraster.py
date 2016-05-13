@@ -103,7 +103,7 @@ class DEMRaster(__Raster):
         
         # Load entire image
         if load_data == True:
-            self.r = self.read_single_band(band)
+            self.r = np.float32(self.read_single_band(band))
 
         # Or load just a subset region
         elif isinstance(load_data,tuple) or isinstance(load_data,list):

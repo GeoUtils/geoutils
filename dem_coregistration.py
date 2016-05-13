@@ -195,10 +195,10 @@ def coreg_with_master_dem(args):
     if master_dem.r.shape!=slave_dem.r.shape:
       if args.grid=='master':
         print "Reproject slave DEM"
-        dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata, interp_type=1,progress=True).r
+        dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata, interp_type=gdal.GRA_Bilinear,progress=True).r
       elif args.grid=='slave':
         print "Reproject master DEM"
-        master_dem = master_dem.reproject(slave_dem.srs, slave_dem.nx, slave_dem.ny, slave_dem.extent[0], slave_dem.extent[3], slave_dem.xres, slave_dem.yres, dtype=6, nodata=nodata, interp_type=1,progress=True)
+        master_dem = master_dem.reproject(slave_dem.srs, slave_dem.nx, slave_dem.ny, slave_dem.extent[0], slave_dem.extent[3], slave_dem.xres, slave_dem.yres, dtype=6, nodata=nodata, interp_type=gdal.GRA_Bilinear,progress=True)
         master_dem = DEMRaster(master_dem.ds)  # convert it to a DEMRaster object for later use of specific functions
         dem2coreg=slave_dem.r
       else:
@@ -213,7 +213,7 @@ def coreg_with_master_dem(args):
         mask = raster.SingleBandRaster(args.maskfile)
         if master_dem.r.shape!=mask.r.shape:
           print "Reproject mask"
-          mask = mask.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata, interp_type=1,progress=True)
+          mask = mask.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata, interp_type=gdal.GRA_NearestNeighbour,progress=True)  # nearest neighbor interpolation
 
         master_dem.r[mask.r>0] = np.nan
 
@@ -301,6 +301,7 @@ def coreg_with_master_dem(args):
       fname+='_shift.txt'
       f = open(fname,'w')
       f.write("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
+      f.write("Final NMAD : %f" %NMAD_new)
       f.close()
       print "Offset saved in %s" %fname
       
@@ -444,7 +445,7 @@ def coreg_with_IceSAT(args):
 
     dem2coreg.r[mask.r>0] = np.nan
 
-    ## read Iesat data with DEM extent ##
+    ## read Icesat data with DEM extent ##
     all_lons, all_lats, all_elev = read_icesat_elev(is_files,RoI)
 
     ## compare slave DEM and Icesat ##
@@ -526,6 +527,7 @@ def coreg_with_IceSAT(args):
       fname+='_shift.txt'
       f = open(fname,'w')
       f.write("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
+      f.write("Final NMAD : %f" %NMAD_new)
       f.close()
       print "Offset saved in %s" %fname
       
@@ -555,6 +557,20 @@ def coreg_with_IceSAT(args):
     # estimate a ramp and remove it
     ramp = deramping(dh,xx,yy,plot=False)
 
+    # compute stats of deramped dh
+    tmp = dh-ramp(X,Y) ;
+    median = np.median(tmp)
+    NMAD_new = 1.4826*np.median(np.abs(tmp[np.isfinite(tmp)]-median))
+    
+    if args.save==True:
+          fname, ext = os.path.splitext(args.outfile)
+          fname+='_shift.txt'
+          f = open(fname,'a')
+          f.write("Median after deramping : (%f)" %(median))
+          f.write("NMAD after deramping : %f" %NMAD_new)
+          f.close()
+          print "Post-deramping stats saved in %s" %fname
+        
     # save to output file
     if args.save==True:
       fname, ext = os.path.splitext(args.outfile)

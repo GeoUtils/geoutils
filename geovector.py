@@ -14,7 +14,8 @@ from matplotlib import cm
 from matplotlib.collections import PatchCollection
 from matplotlib import colors
 from scipy import ndimage
-import sys
+import sys, os
+import types
 try:
     from skimage import morphology
 except ImportError:
@@ -439,13 +440,17 @@ Additionally, a number of instances are available in the class.
         self.extent = poly.GetEnvelope()
     
 
-    def crop2raster(self,rasterfile):
+    def crop2raster(self,rs):
         """
         Filter all features that are outside the raster extent.
+        rs : path to the raster file or georaster object
         """
 
         # Read raster extent
-        img = raster.SingleBandRaster(rasterfile,load_data=False)
+        if isinstance(rs,str):  # case raster is filename
+            img = raster.SingleBandRaster(rs,load_data=False)
+        elif isinstance(rs,types.InstanceType):   # case raster is a georaster object
+            img = rs
         xmin, xmax, ymin, ymax = img.extent
 
         # Reproject extent to vector geometry
@@ -951,3 +956,57 @@ class Shape():
                 y[i+1] = y[i]+ygrad*spacing*(n+1)  #y[i] + (y[i+1]-y[i])*(n+1)/float(n)
 
             return np.array(new_x), np.array(new_y)
+
+
+def save_shapefile(filename,gv_obj):
+    """
+    Save features to an ESRI shapefile.
+    Inputs:
+    - filename: str, path to the output file
+    - gv_obj: geovector.SingleLayerVector object
+    The script will save the features in gv_obj.features with the associated fields in gv_obj.fields.values.
+    """
+    
+    ## Create the output layer
+    outDataSet = ogr.GetDriverByName('ESRI Shapefile').CreateDataSource(filename)
+    outLayer = outDataSet.CreateLayer(os.path.splitext(filename)[0], gv_obj.srs,geom_type=ogr.wkbMultiPolygon)
+
+    ## Add fields
+    np2OGR = {'i4':ogr.OFTInteger,'d':ogr.OFTReal,'S':ogr.OFTString,'i8':ogr.OFTInteger64}
+    for key in gv_obj.fields.values.keys():
+        dt=gv_obj.fields.values[key].dtype
+        fieldDefn = ogr.FieldDefn(key, np2OGR[dt.char])
+        if dt.char=='S':
+            fieldDefn.SetWidth(dt.itemsize)
+        outLayer.CreateField(fieldDefn)
+
+    outLayerDefn = outLayer.GetLayerDefn()
+
+    ## Loop through the input features
+    
+    nfeat = len(gv_obj.features)
+    for k in xrange(nfeat):
+        
+        inFeature = gv_obj.features[k]
+        # get the input geometry
+        geom = inFeature.GetGeometryRef()
+        # create a new feature
+        outFeature = ogr.Feature(outLayerDefn)
+        # set the geometry and attribute
+        outFeature.SetGeometry(geom)
+        # set the Spatial Reference
+        geom.AssignSpatialReference(gv_obj.srs)
+
+        # add fields
+        for key in gv_obj.fields.values.keys():
+            outFeature.SetField(key, gv_obj.fields.values[key][k])
+
+        # add the feature to the shapefile
+        outLayer.CreateFeature(outFeature)
+        # destroy the feature
+        outFeature.Destroy()
+
+    # write to file
+    outDataSet.Destroy()
+    
+    return True

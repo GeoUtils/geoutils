@@ -957,6 +957,9 @@ class Shape():
 
             return np.array(new_x), np.array(new_y)
 
+# Data type conversion from numpy to OGR
+np2OGR = {'i4':ogr.OFTInteger,'l':ogr.OFTInteger64,'d':ogr.OFTReal, \
+          'S':ogr.OFTString,'i8':ogr.OFTInteger64}
 
 def save_shapefile(filename,gv_obj):
     """
@@ -969,13 +972,17 @@ def save_shapefile(filename,gv_obj):
     
     ## Create the output layer
     outDataSet = ogr.GetDriverByName('ESRI Shapefile').CreateDataSource(filename)
-    outLayer = outDataSet.CreateLayer(os.path.splitext(filename)[0], gv_obj.srs,geom_type=ogr.wkbMultiPolygon)
+    outLayer = outDataSet.CreateLayer(os.path.splitext(filename)[0], gv_obj.srs,geom_type=gv_obj.layer.GetGeomType())
 
     ## Add fields
-    np2OGR = {'i4':ogr.OFTInteger,'d':ogr.OFTReal,'S':ogr.OFTString,'i8':ogr.OFTInteger64}
     for key in gv_obj.fields.values.keys():
         dt=gv_obj.fields.values[key].dtype
-        fieldDefn = ogr.FieldDefn(key, np2OGR[dt.char])
+        try:
+            fieldDefn = ogr.FieldDefn(key, np2OGR[dt.char])
+        except KeyError:
+            print "ERROR: data type %s not implemented!" %dt
+            sys.exit(1)
+            
         if dt.char=='S':
             fieldDefn.SetWidth(dt.itemsize)
         outLayer.CreateField(fieldDefn)

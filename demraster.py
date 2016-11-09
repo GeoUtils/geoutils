@@ -103,20 +103,23 @@ class DEMRaster(__Raster):
         
         # Load entire image
         if load_data == True:
-            self.r = np.float32(self.read_single_band(band))
+            self.r = self.read_single_band(band)
 
         # Or load just a subset region
         elif isinstance(load_data,tuple) or isinstance(load_data,list):
             if len(load_data) == 4:
                 (self.r,self.extent) = self.read_single_band_subset(load_data,
                                                                     latlon=latlon,extent=True,band=band,update_info=True)
-
+                
         elif load_data == False:
             return
 
         else:
             print 'Warning : load_data argument not understood. No data loaded.'
 
+        # Convert to float32 for future computations
+        self.r = np.float32(self.r)
+        
         #Set nodata values to Nan
         band=self.ds.GetRasterBand(1)
         nodata=band.GetNoDataValue()

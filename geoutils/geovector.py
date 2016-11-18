@@ -358,11 +358,16 @@ Additionally, a number of instances are available in the class.
 
         return p
 
-    def draw_by_attr(self,attr,cmap=cm.jet,subset='all',vmin='default',vmax='default',**kwargs):
+    def draw_by_attr(self,attr,cmap=cm.jet,subset='all',vmin='default',vmax='default',clabel='default',**kwargs):
         """
         Plot the geometries defined in the vector file
         Inputs :
-        - subset : indices of the features to plot (Default is 'all')
+        - attr: str, attribute to plot (from self.fields.name)
+        - subset: indices of the features to plot (Default is 'all')
+        - cmap: color map, matplotlib.colors instance (Default is jet)
+        - vmin/vmax: f, min and max value of the colorbar (Default is min/max value of the data)
+        - clabel: title for the colorbar (Default is attr)
+        
         **kwargs : any optional argument accepted by the matplotlib.patches.PathPatch class, e.g.
             - edgecolor : mpl color spec, or None for default, or ‘none’ for no color
             - facecolor : mpl color spec, or None for default, or ‘none’ for no color
@@ -395,7 +400,7 @@ Additionally, a number of instances are available in the class.
 #        p95 = np.percentile(values[~np.isnan(values)],95)
         bounds = np.linspace(vmin,vmax,255)
         norm = colors.BoundaryNorm(bounds, cmap.N)
-        values[np.isnan(values)] = -1e5
+        values[np.isnan(values)] = vmin-1
         cmap = deepcopy(cmap)   #copy to avoid changes applying to other scripts
         cmap.set_under('grey')
 
@@ -406,7 +411,10 @@ Additionally, a number of instances are available in the class.
         ax = pl.gca()
         ax.add_collection(p)
         cb = pl.colorbar(p)
-        cb.set_label(attr)
+        if clabel=='default':
+            cb.set_label(attr)
+        else:
+            cb.set_label(clabel)
         xmin, xmax,ymin,ymax = self.extent
         ax.set_xlim(xmin,xmax)
         ax.set_ylim(ymin,ymax)
@@ -468,11 +476,18 @@ Additionally, a number of instances are available in the class.
         """
         Compute statistics of the data in rasterfile for each feature in self.
         Inputs :
+        - rasterfile : str, path to the raster file or georaster instance
         - subset : indices of the features to compute (Default is 'all')
+        - nodata : float, no data value (Default is None)
+        Outputs :
+        - mean, std, count, frac: np arrays containing the mean, standard deviation, number of points and fraction of total points in each feature.
         """
 
         # Read raster coordinates
-        img = raster.SingleBandRaster(rasterfile)
+        if isinstance(rasterfile,str):   # if filename provided
+            img = raster.SingleBandRaster(rasterfile)
+        else:                        # if georaster instance provided
+            img = rasterfile   
         X, Y = img.coordinates()
 
         # Coordinate transformation from vector to raster projection system
@@ -485,14 +500,14 @@ Additionally, a number of instances are available in the class.
             subset = [subset,] #create list if only one value
 
         print "Loop on all features"
-        median = []
+        mean = []
         std = []
         count = []
         frac = []
         for feat in self.features[subset]:
 
             #Read feature geometry and reproject to raster projection
-            sh = Shape(feat,load_data=False)
+            sh = Shape(feat.Clone(),load_data=False)
             sh.geom.Transform(coordTrans)
             sh.read()
 
@@ -513,23 +528,19 @@ Additionally, a number of instances are available in the class.
             if nodata!=None:
                 data = data[data!=nodata]
 
-            median.append(data)
-
             #Compute statistics
             if len(data)>0:
-                median.append(np.median(data))
-                mad = 1.4826*np.median(np.abs(data-np.median(data)))
-                std.append(mad)
-                #                std.append(np.std(data))
+                mean.append(np.mean(data))
+                std.append(np.std(data))
                 count.append(len(data))
                 frac.append(float(len(data))/len(inside_i))
             else:
-                median.append(np.nan)
+                mean.append(np.nan)
                 std.append(np.nan)
                 count.append(0)
                 frac.append(0)
 
-        return np.array(median), np.array(std), np.array(count), np.array(frac)
+        return np.array(mean), np.array(std), np.array(count), np.array(frac)
 
     def create_mask(self,raster='none',srs='none',xres='none',yres='none',extent='none'):
         """
@@ -682,7 +693,7 @@ class Shape():
         def __init__(self,feature,load_data=True):
             
             self.feature = feature
-            self.geom = feature.GetGeometryRef()
+            self.geom = feature.GetGeometryRef()  
 
             if load_data==True:
                 self.read()

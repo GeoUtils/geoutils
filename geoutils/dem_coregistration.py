@@ -18,12 +18,11 @@ import argparse
 import os
 import gdal
 from glob import glob
-import h5py
 
 #Personal libraries
 import georaster as raster
-from demraster import DEMRaster
-import geometry as geo
+from geoutils.demraster import DEMRaster
+from geoutils import geometry as geo
 
 #Disable warnings
 import warnings
@@ -380,6 +379,8 @@ def read_icesat_elev(is_files,RoI):
     - is_files : str, IceSAT file name or regular expression to different files
     - RoI : str, region of interest, defined as a polygon ((x1,y1),(x2,y2),...)
     """
+
+    import h5py
 
     ## Read Icesat data
     print "read Icesat data"

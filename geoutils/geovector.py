@@ -513,7 +513,7 @@ Additionally, a number of instances are available in the class.
             if nodata!=None:
                 data = data[data!=nodata]
 
-            median.append(data)
+
 
             #Compute statistics
             if len(data)>0:
@@ -652,7 +652,7 @@ Additionally, a number of instances are available in the class.
         right,top = pyproj_obj(xur,yur)
         return (left,right,bottom,top)
 
-    def extract_value_from_raster(self,raster,spacing='none'):
+    def extract_value_from_raster(self,raster,spacing='none',band=1):
         """
         Extract raster values at the location of the feature vertices. Return as many arrays as features in the vector file.
         """
@@ -667,14 +667,71 @@ Additionally, a number of instances are available in the class.
             else:
                 x,y = sh.regularise(spacing)
             if not self.srs.IsProjected():
-                temp_values = raster.interp(x,y,latlon=True)
+                temp_values = raster.interp(x,y,latlon=True,band=band)
             else:
-                temp_values = raster.interp(x,y,latlon=False)
+                temp_values = raster.interp(x,y,latlon=False,band=band)
             interp_values.append(temp_values)
             XX.append(x)
             YY.append(y)
 
         return XX, YY, interp_values
+
+    
+    def clip_raster(self,inraster,outfile,feature='all',masking=False,nodata_value=-9999):
+        """
+        Clip a raster to the extent of the vector layer.
+        """
+
+        # Read raster headers
+        img = raster.SingleBandRaster(inraster,load_data=False)
+        
+        # Get the extent for the whole layer or a specific feature
+        if feature=='all':
+            extent = self.extent
+            xmin, xmax, ymin, ymax
+            vertices = ((xmin,ymin), (xmin, ymax), (xmax,ymin), (xmax, ymax))
+        else:
+            sh = Shape(self.features[feature])
+            extent = sh.extent
+            vertices = sh.vertices
+
+        # If extent is in lat/lon, can use directly in SingleBandRaster
+        if self.srs.IsProjected()==0:
+            latlon=True
+
+        # Otherwise, need to convert to the same reference system
+        else:
+            transform = osr.CoordinateTransformation(self.srs,img.srs)
+            vertOut = transform.TransformPoints(vertices)
+            xOut, yOut, zOut = np.transpose(vertOut)
+            xmin, xmax = np.min(xOut), np.max(xOut)
+            ymin, ymax = np.min(yOut), np.max(yOut)
+            extent = xmin, xmax, ymin, ymax
+            latlon=False
+
+        # Now load the raster for the specific extent
+        img = raster.SingleBandRaster(inraster,load_data=extent,latlon=latlon)
+
+        # Mask values outside the features if required
+        nodata = img.ds.GetRasterBand(1).GetNoDataValue()
+        if nodata==None:
+            nodata = nodata_value
+
+        # Mask values outside the features if required
+        if masking==True:
+            mask = outlines.create_mask(img)
+            img.r[mask==0] = nodata
+
+        # Save to output file or georaster object
+        gtIn = img.ds.GetGeoTransform()
+        gtOut = (img.extent[0], gtIn[1], gtIn[2], img.extent[3], gtIn[4], gtIn[5])
+        imgOut = raster.simple_write_geotiff(outfile, img.r, gtOut, wkt=img.srs.ExportToWkt(), dtype=img.ds.GetRasterBand(1).DataType, nodata_value=nodata)
+
+        if outfile=='none':
+            return imgOut
+        else:
+            return img
+            
 
 
 class Shape():
@@ -958,7 +1015,7 @@ class Shape():
             return np.array(new_x), np.array(new_y)
 
 # Data type conversion from numpy to OGR
-np2OGR = {'i4':ogr.OFTInteger,'l':ogr.OFTInteger64,'d':ogr.OFTReal, \
+np2OGR = {'i':ogr.OFTInteger,'l':ogr.OFTInteger64,'d':ogr.OFTReal, \
           'S':ogr.OFTString,'i8':ogr.OFTInteger64}
 
 def save_shapefile(filename,gv_obj):

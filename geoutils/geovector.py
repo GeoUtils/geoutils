@@ -262,7 +262,31 @@ Additionally, a number of instances are available in the class.
 
         return self.layer.GetFeatureCount()
 
+    def update_extent(self):
+        """
+        Update the layer extent after filters have been applied.
+        """
+        
+        north, east = -np.inf, -np.inf
+        south, west = np.inf, np.inf
 
+        for feat in range(self.layer.GetFeatureCount()):
+            feature = self.layer.GetFeature(feat)
+            geometry = feature.GetGeometryRef()
+            x1, x2, y1, y2 = geometry.GetEnvelope()
+
+            if north < y2:
+                north = y2
+            if south > y1:
+                south = y1
+            if east < x1:
+                east = x1
+            if west > x2:
+                west = x2
+
+        self.extent = (west, east, south, north)
+
+        
     def reproject(self,target_srs):
         """
         Return a new SingleLayerVector object with features reprojected according to target_srs.

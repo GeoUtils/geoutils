@@ -702,7 +702,7 @@ Additionally, a number of instances are available in the class.
         return XX, YY, interp_values
 
     
-    def clip_raster(self,inraster,outfile,feature='all',masking=False,nodata_value=-9999):
+    def clip_raster(self,inraster,outfile,feature='all',masking=False,nodata_value=None):
         """
         Clip a raster to the extent of the vector layer.
         """
@@ -713,38 +713,36 @@ Additionally, a number of instances are available in the class.
         # Get the extent for the whole layer or a specific feature
         if feature=='all':
             extent = self.extent
-            xmin, xmax, ymin, ymax
+            xmin, xmax, ymin, ymax = extent
             vertices = ((xmin,ymin), (xmin, ymax), (xmax,ymin), (xmax, ymax))
         else:
             sh = Shape(self.features[feature])
             extent = sh.extent
             vertices = sh.vertices
 
-        # If extent is in lat/lon, can use directly in SingleBandRaster
-        if self.srs.IsProjected()==0:
-            latlon=True
-
-        # Otherwise, need to convert to the same reference system
-        else:
-            transform = osr.CoordinateTransformation(self.srs,img.srs)
-            vertOut = transform.TransformPoints(vertices)
-            xOut, yOut, zOut = np.transpose(vertOut)
-            xmin, xmax = np.min(xOut), np.max(xOut)
-            ymin, ymax = np.min(yOut), np.max(yOut)
-            extent = xmin, xmax, ymin, ymax
-            latlon=False
+        # Convert to the raster reference system
+        transform = osr.CoordinateTransformation(self.srs,img.srs)
+        vertOut = transform.TransformPoints(vertices)
+        xOut, yOut, zOut = np.transpose(vertOut)
+        xmin, xmax = np.min(xOut), np.max(xOut)
+        ymin, ymax = np.min(yOut), np.max(yOut)
+        extent = xmin, xmax, ymin, ymax
+        latlon=False
 
         # Now load the raster for the specific extent
         img = raster.SingleBandRaster(inraster,load_data=extent,latlon=latlon)
 
         # Mask values outside the features if required
-        nodata = img.ds.GetRasterBand(1).GetNoDataValue()
-        if nodata==None:
+        if nodata_value==None:
+            nodata = img.ds.GetRasterBand(1).GetNoDataValue()
+            if nodata==None:
+                nodata = -9999
+        else:
             nodata = nodata_value
-
+        
         # Mask values outside the features if required
         if masking==True:
-            mask = outlines.create_mask(img)
+            mask = self.create_mask(img)
             img.r[mask==0] = nodata
 
         # Save to output file or georaster object

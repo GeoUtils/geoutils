@@ -41,7 +41,7 @@ Created on Mon Apr 6
 
 import numpy as np
 from scipy import ndimage, signal
-from scipy.stats import nanmean
+from scipy import nanmean
 from osgeo import osr, gdal
 import subprocess
 import xml.etree.ElementTree as etree
@@ -186,14 +186,14 @@ class DEMRaster(__Raster):
 
 
 
-    def shaded_relief(self,azdeg=225,altdeg=30,cmap=pl.get_cmap('Greys'),alpha=1,aspect=None,smoothing=None,vmin='default',vmax='default',downsampl=1):
+    def shaded_relief(self,azdeg=315,altdeg=45,cmap=pl.get_cmap('Greys_r'),alpha=1,win_asp=None,smoothing=None,vmin='default',vmax='default',downsampl=1):
         """
         Function to plot a shaded relief of the DEM
         azdeg : f, azimuth (measured anti-clockwise from east) of the light source in degress for the shaded relief
         altdeg : f, altitude (measured up from the plane of the surface) of the light source in degrees
         cmap : object of class Colormap, default 'Greys'
         alpha : f, 0 to 1, transparency
-        asp : f, imshow window aspect, default is 1
+        win_asp : f, imshow window aspect, default is 1
         smoothing : int, apply a gaussian filter of size 'smoothing'. Can be used to reduce noise (Default is none)
         vmin/vmax : f, setting these values manually can reduce areas of saturation in the plot, default is min/max of the DEM
         downsampl : int, factor to downsample the matrix if too large
@@ -220,14 +220,27 @@ class DEMRaster(__Raster):
             vmax=data.max()
 
         # compute shaded relief
-        ls = LightSource(azdeg=azdeg, altdeg=altdeg)
-        rgb0 = cmap((data - vmin) / (vmax - vmin))
-        rgb1 = ls.shade_rgb(rgb0, elevation=data)
+        x, y = np.gradient(data)
+        slope = np.pi/2. - np.arctan(np.sqrt(x*x + y*y))
+        aspect = np.arctan2(-x, y)
+        azimuthrad = azdeg*np.pi / 180.
+        altituderad = altdeg*np.pi / 180.
+ 
+        shaded = np.sin(altituderad) * np.sin(slope)\
+                 + np.cos(altituderad) * np.cos(slope)\
+                 * np.cos((azimuthrad) - aspect)
+    
+        # ls = LightSource(azdeg=azdeg, altdeg=altdeg)
+        # rgb0 = cmap((data - vmin) / (vmax - vmin))
+        # rgb1 = ls.shade_rgb(rgb0, elevation=data)
+
+        # # plot
+        # pl.imshow(rgb1,extent=self.extent,interpolation='bilinear',alpha=alpha,aspect=aspect)
 
         # plot
-        pl.imshow(rgb1,extent=self.extent,interpolation='bilinear',alpha=alpha,aspect=aspect)
+        pl.imshow(shaded,extent=self.extent,interpolation='bilinear',alpha=alpha,aspect=win_asp,cmap=cmap)
 
-        return rgb1
+        return shaded
 
     
     def plot_contours(self,levels='default',c='k',alpha=1,aspect='default'):

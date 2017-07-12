@@ -677,7 +677,7 @@ Additionally, a number of instances are available in the class.
         right,top = pyproj_obj(xur,yur)
         return (left,right,bottom,top)
 
-    def extract_value_from_raster(self,raster,spacing='none',band=1):
+    def extract_value_from_raster(self,rs,spacing='none',bands=0):
         """
         Extract raster values at the location of the feature vertices. Return as many arrays as features in the vector file.
         """
@@ -692,9 +692,9 @@ Additionally, a number of instances are available in the class.
             else:
                 x,y = sh.regularise(spacing)
             if not self.srs.IsProjected():
-                temp_values = raster.interp(x,y,latlon=True,band=band)
+                temp_values = rs.interp(x,y,latlon=True,bands=bands)
             else:
-                temp_values = raster.interp(x,y,latlon=False,band=band)
+                temp_values = rs.interp(x,y,latlon=False,bands=bands)
             interp_values.append(temp_values)
             XX.append(x)
             YY.append(y)

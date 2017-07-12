@@ -358,7 +358,7 @@ Additionally, a number of instances are available in the class.
 
         return p
 
-    def draw_by_attr(self,attr,cmap=cm.jet,subset='all',vmin='default',vmax='default',**kwargs):
+    def draw_by_attr(self,attr,cmap=cm.jet,subset='all',vmin='default',vmax='default',cbar=True,**kwargs):
         """
         Plot the geometries defined in the vector file
         Inputs :
@@ -393,20 +393,21 @@ Additionally, a number of instances are available in the class.
             vmax = np.nanmax(values)
 #        p5 = np.percentile(values[~np.isnan(values)],5)
 #        p95 = np.percentile(values[~np.isnan(values)],95)
-        bounds = np.linspace(vmin,vmax,255)
+        bounds = np.linspace(vmin,vmax,cmap.N+1)
         norm = colors.BoundaryNorm(bounds, cmap.N)
         values[np.isnan(values)] = -1e5
         cmap = deepcopy(cmap)   #copy to avoid changes applying to other scripts
         cmap.set_under('grey')
 
-        p = PatchCollection(patches, cmap=cmap,norm=norm)
+        p = PatchCollection(patches, cmap=cmap,norm=norm, **kwargs)
         p.set_array(np.array(values)) #set colors
 
         #Plot
         ax = pl.gca()
         ax.add_collection(p)
-        cb = pl.colorbar(p)
-        cb.set_label(attr)
+        if cbar==True:
+            cb = pl.colorbar(p)
+            cb.set_label(attr)
         xmin, xmax,ymin,ymax = self.extent
         ax.set_xlim(xmin,xmax)
         ax.set_ylim(ymin,ymax)

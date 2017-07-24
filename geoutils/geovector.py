@@ -437,11 +437,24 @@ Additionally, a number of instances are available in the class.
         ax.set_ylim(ymin,ymax)
 
 
-    def crop(self,xmin,xmax,ymin,ymax):
+    def crop(self,xmin,xmax,ymin,ymax,latlon=False):
         """
         Filter all features that are outside the rectangle defined by the corners xmin, xmax, ymin, ymax.
         Coordinates are in the same Reference System as the vector file.
         """
+
+        # convert latlon coordinates to local coordinates
+        if latlon==True:
+            x1, y1 = self.proj(xmin,ymin)
+            x2, y2 = self.proj(xmin,ymax)
+            x3, y3 = self.proj(xmax,ymax)
+            x4, y4 = self.proj(xmax,ymin)
+            xmin = min(x1,x2,x3,x4)
+            xmax = max(x1,x2,x3,x4)
+            ymin = min(y1,y2,y3,y4)
+            ymax = max(y1,y2,y3,y4)
+
+            
         # Create a ring linking the 4 corners
         ring = ogr.Geometry(ogr.wkbLinearRing)
         ring.AddPoint(xmin, ymin)

@@ -705,9 +705,9 @@ Additionally, a number of instances are available in the class.
             else:
                 x,y = sh.regularise(spacing)
             if not self.srs.IsProjected():
-                temp_values = rs.interp(x,y,latlon=True,bands=bands)
+                temp_values = rs.interp_from_ds(x,y,latlon=True,bands=bands)
             else:
-                temp_values = rs.interp(x,y,latlon=False,bands=bands)
+                temp_values = rs.interp_from_ds(x,y,latlon=False,bands=bands)
             interp_values.append(temp_values)
             XX.append(x)
             YY.append(y)
@@ -715,7 +715,7 @@ Additionally, a number of instances are available in the class.
         return XX, YY, interp_values
 
     
-    def clip_raster(self,inraster,outfile,feature='all',masking=False,nodata_value=None):
+    def clip_raster(self,inraster,outfile,feature='all',masking=False,nodata_value=None, downsampl=1):
         """
         Clip a raster to the extent of the vector layer.
         """
@@ -743,7 +743,7 @@ Additionally, a number of instances are available in the class.
         latlon=False
 
         # Now load the raster for the specific extent
-        img = raster.SingleBandRaster(inraster,load_data=extent,latlon=latlon)
+        img = raster.SingleBandRaster(inraster,load_data=extent,latlon=latlon,downsampl=downsampl)
 
         # Mask values outside the features if required
         if nodata_value==None:

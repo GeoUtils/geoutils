@@ -501,8 +501,8 @@ Additionally, a number of instances are available in the class.
         # Crop
         self.crop(left,right,bottom,up)
 
-
-    def zonal_statistics(self,rs,operator,subset='all',nodata=None,progress=False):
+    
+    def zonal_statistics(self,rs,operator,subset='all',nodata=None):
         """
         Compute statistics of the data in rasterfile for each feature in self.
         For now, only implemented for SingleBandRaster.
@@ -522,7 +522,10 @@ Additionally, a number of instances are available in the class.
             'ERROR: raster must be either a georaster.SingleBandRaster instance or a string (path to filename), now is %s' %type(raster)
             return 0
 
-        X, Y = img.coordinates()
+        xl, xr, yd, yu = img.extent
+
+        if nodata==None:
+            nodata = img.ds.GetRasterBand(1).GetNoDataValue()
 
         # Coordinate transformation from vector to raster projection system
         coordTrans = osr.CoordinateTransformation(self.srs,img.srs)
@@ -540,33 +543,37 @@ Additionally, a number of instances are available in the class.
 
             # Progressbar
             gdal.TermProgress_nocb(float(k)/(len(subset)-1))
-            
+
             # Read feature geometry and reproject to raster projection
             feat = self.features[k].Clone()  # clone needed to not modify input layer
             sh = Shape(feat,load_data=False)
             sh.geom.Transform(coordTrans)
             sh.read()
 
-            # Extract only raster points within the box of the feature
+            # Read feature extent and compare to rater extent. Features not entirely inside raster extent are excluded
             xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
-            inds = np.where((X>=xmin) & (X<=xmax) & (Y>=ymin) & (Y<=ymax))
+            if ((xmax>xr) or (xmin<xl) or (ymin<yd) or (ymax>yu)):
+                outputs.append(np.nan)
+                continue
+            
+            # Look only for points within the box of the feature
+            i1, j1 = img.coord_to_px(xmin,ymin)
+            i2, j2 = img.coord_to_px(xmax,ymax)
+            jinds = np.arange(j2,j1+1,dtype='int64')
+            iinds = np.arange(i1,i2+1,dtype='int64')
+            ii, jj = np.meshgrid(iinds,jinds)
+            X, Y = img.coordinates(Xpixels=ii,Ypixels=jj)
 
             # Select data within the feature
-            inside = geo.points_inside_polygon(X[inds],Y[inds],sh.vertices,skip_holes=False)
-            inside = np.where(inside)
-            inside_i = inds[0][inside]
-            inside_j = inds[1][inside]            
-            data = img.r[inside_i,inside_j]
+            inside = geo.points_inside_polygon(X,Y,sh.vertices,skip_holes=False)
+            inside_i = ii[inside==True]
+            inside_j = jj[inside==True]
+            data = img.r[inside_j,inside_i]
 
             # Filter no data values
             data = data[~np.isnan(data)]
-            if nodata==None:
-                nodata = img.ds.GetRasterBand(1).GetNoDataValue()
-                if nodata!='':
-                    data = data[data!=nodata]
-            else:
+            if nodata!='':
                 data = data[data!=nodata]
-
 
             # Compute statistics
             if len(data)>0:

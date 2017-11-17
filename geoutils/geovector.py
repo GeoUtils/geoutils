@@ -501,74 +501,102 @@ Additionally, a number of instances are available in the class.
         # Crop
         self.crop(left,right,bottom,up)
 
-
-    def zonal_statistics(self,rasterfile,subset='all',nodata=None):
+    
+    def zonal_statistics(self,rs,operator,subset='all',nodata=None):
         """
         Compute statistics of the data in rasterfile for each feature in self.
+        For now, only implemented for SingleBandRaster.
         Inputs :
+        - rs: a georaster.SingleBandRaster instance or a filename
+        - operator: the aggregation operator to be applied to the data, e.g. np.mean, np.std etc
         - subset : indices of the features to compute (Default is 'all')
+        - nodata : specify a no data value (Default will read value from metadata)
         """
 
-        # Read raster coordinates
-        img = raster.SingleBandRaster(rasterfile)
-        X, Y = img.coordinates()
+        # Read raster
+        if isinstance(rs,raster.SingleBandRaster):
+            img = rs
+        elif isinstance(H,str):
+            img = raster.SingleBandRaster(rs)
+        else:
+            'ERROR: raster must be either a georaster.SingleBandRaster instance or a string (path to filename), now is %s' %type(raster)
+            return 0
+
+        xl, xr, yd, yu = img.extent
+
+        if nodata==None:
+            nodata = img.ds.GetRasterBand(1).GetNoDataValue()
 
         # Coordinate transformation from vector to raster projection system
         coordTrans = osr.CoordinateTransformation(self.srs,img.srs)
-
-        #Select only subset specified by user
+        
+        # Select only subset specified by user
         if subset=='all':
             subset = range(len(self.features))
         elif isinstance(subset,numbers.Number):
             subset = [subset,] #create list if only one value
 
-        print "Loop on all features"
-        median = []
-        std = []
-        count = []
-        frac = []
-        for feat in self.features[subset]:
+        # output values to be stored in this list
+        outputs = []
 
-            #Read feature geometry and reproject to raster projection
+        for k in subset:
+
+            # Progressbar
+            gdal.TermProgress_nocb(float(k)/(len(subset)-1))
+
+            # Read feature geometry and reproject to raster projection
+            feat = self.features[k].Clone()  # clone needed to not modify input layer
             sh = Shape(feat,load_data=False)
             sh.geom.Transform(coordTrans)
             sh.read()
 
-            #Look only for points within the box of the feature
+            # Read feature extent and compare to rater extent. Features not entirely inside raster extent are excluded
             xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
-            inds = np.where((X>=xmin) & (X<=xmax) & (Y>=ymin) & (Y<=ymax))
+            if ((xmax>xr) or (xmin<xl) or (ymin<yd) or (ymax>yu)):
+                outputs.append(np.nan)
+                continue
+            
+            # Look only for points within the box of the feature
+            i1, j1 = img.coord_to_px(xmin,ymin)
+            i2, j2 = img.coord_to_px(xmax,ymax)
+            jinds = np.arange(j2,j1+1,dtype='int64')
+            iinds = np.arange(i1,i2+1,dtype='int64')
+            ii, jj = np.meshgrid(iinds,jinds)
+            X, Y = img.coordinates(Xpixels=ii,Ypixels=jj)
 
-            #Select data within the feature
-            inside = geo.points_inside_polygon(X[inds],Y[inds],sh.vertices,skip_holes=False)
-            inside = np.where(inside)
-            inside_i = inds[0][inside]
-            inside_j = inds[1][inside]
+            # Select data within the feature
+            inside = geo.points_inside_polygon(X,Y,sh.vertices,skip_holes=False)
+            inside_i = ii[inside==True]
+            inside_j = jj[inside==True]
+            data = img.r[inside_j,inside_i]
 
-            data = img.r[inside_i,inside_j]
-
-            #Filter no data values
+            # Filter no data values
             data = data[~np.isnan(data)]
-            if nodata!=None:
+            if nodata!='':
                 data = data[data!=nodata]
 
-
-
-            #Compute statistics
+            # Compute statistics
             if len(data)>0:
-                median.append(np.median(data))
-                mad = 1.4826*np.median(np.abs(data-np.median(data)))
-                std.append(mad)
-                #                std.append(np.std(data))
-                count.append(len(data))
-                frac.append(float(len(data))/len(inside_i))
+                if callable(operator):  # case only 1 operator
+                    outputs.append(operator(data))
+                elif (isinstance(operator,list) or isinstance(operator,tuple)): # case list of operators
+                    output = [op(data) for op in operator]
+                    outputs.append(output)
+                    
             else:
-                median.append(np.nan)
-                std.append(np.nan)
-                count.append(0)
-                frac.append(0)
+                if callable(operator):
+                    outputs.append(np.nan)
+                elif (isinstance(operator,list) or isinstance(operator,tuple)):
+                    outputs.append(np.nan*np.zeros(len(operator)))
 
-        return np.array(median), np.array(std), np.array(count), np.array(frac)
+        # If multiple operators, has to transpose the list
+        if isinstance(outputs[0],list):
+            outputs = np.transpose(outputs)
 
+        return outputs
+
+
+    
     def create_mask(self,raster='none',srs='none',xres='none',yres='none',extent='none'):
         """
         Return a mask (array with dtype Byte) of the polygons in self.
@@ -705,9 +733,9 @@ Additionally, a number of instances are available in the class.
             else:
                 x,y = sh.regularise(spacing)
             if not self.srs.IsProjected():
-                temp_values = rs.interp(x,y,latlon=True,bands=bands)
+                temp_values = rs.interp_from_ds(x,y,latlon=True,bands=bands)
             else:
-                temp_values = rs.interp(x,y,latlon=False,bands=bands)
+                temp_values = rs.interp_from_ds(x,y,latlon=False,bands=bands)
             interp_values.append(temp_values)
             XX.append(x)
             YY.append(y)
@@ -715,7 +743,7 @@ Additionally, a number of instances are available in the class.
         return XX, YY, interp_values
 
     
-    def clip_raster(self,inraster,outfile,feature='all',masking=False,nodata_value=None):
+    def clip_raster(self,inraster,outfile,feature='all',masking=False,nodata_value=None, downsampl=1):
         """
         Clip a raster to the extent of the vector layer.
         """
@@ -743,7 +771,7 @@ Additionally, a number of instances are available in the class.
         latlon=False
 
         # Now load the raster for the specific extent
-        img = raster.SingleBandRaster(inraster,load_data=extent,latlon=latlon)
+        img = raster.SingleBandRaster(inraster,load_data=extent,latlon=latlon,downsampl=downsampl)
 
         # Mask values outside the features if required
         if nodata_value==None:

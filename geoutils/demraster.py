@@ -171,10 +171,10 @@ class DEMRaster(__Raster):
             disty = np.abs(self.yres)
 
         #Compute z gradients
-        f1 = np.array([[-1,0,1],[-2,0,2],[-1,0,1]])
+        f1 = np.array([[-1.,0.,1.],[-2.,0.,2.],[-1.,0.,1.]])  # integers will cause issues in convolve if Nans
         f2 = f1.transpose()
-        g1 = signal.convolve(self.r,f1,mode='same')
-        g2 = signal.convolve(self.r,f2,mode='same')
+        g1 = signal.convolve(self.r,f1,mode='same',method='direct')  #if selected method='fft', Nans will spread all over
+        g2 = signal.convolve(self.r,f2,mode='same',method='direct')
 
         #compute slope
         mpm = np.sqrt((g1/distx)**2 + (g2/disty)**2)/8

@@ -539,13 +539,13 @@ Additionally, a number of instances are available in the class.
         # output values to be stored in this list
         outputs = []
 
-        for k in subset:
+        for k in xrange(len(subset)):
 
             # Progressbar
             gdal.TermProgress_nocb(float(k)/(len(subset)-1))
 
             # Read feature geometry and reproject to raster projection
-            feat = self.features[k].Clone()  # clone needed to not modify input layer
+            feat = self.features[subset[k]].Clone()  # clone needed to not modify input layer
             sh = Shape(feat,load_data=False)
             sh.geom.Transform(coordTrans)
             sh.read()

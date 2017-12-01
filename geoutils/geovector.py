@@ -270,9 +270,9 @@ Additionally, a number of instances are available in the class.
         north, east = -np.inf, -np.inf
         south, west = np.inf, np.inf
 
-        for feat in range(self.layer.GetFeatureCount()):
-            feature = self.layer.GetFeature(feat)
-            geometry = feature.GetGeometryRef()
+        self.layer.ResetReading()
+        for feat in self.layer:
+            geometry = feat.GetGeometryRef()
             x1, x2, y1, y2 = geometry.GetEnvelope()
 
             if north < y2:
@@ -539,13 +539,13 @@ Additionally, a number of instances are available in the class.
         # output values to be stored in this list
         outputs = []
 
-        for k in subset:
+        for k in xrange(len(subset)):
 
             # Progressbar
             gdal.TermProgress_nocb(float(k)/(len(subset)-1))
 
             # Read feature geometry and reproject to raster projection
-            feat = self.features[k].Clone()  # clone needed to not modify input layer
+            feat = self.features[subset[k]].Clone()  # clone needed to not modify input layer
             sh = Shape(feat,load_data=False)
             sh.geom.Transform(coordTrans)
             sh.read()

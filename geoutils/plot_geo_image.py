@@ -77,7 +77,7 @@ if __name__=='__main__':
 
     # vmin
     if args.vmin=='default':
-        vmin=np.ma.min(data)
+        vmin=np.nanmin(data)
     else:
         try:
             vmin=float(args.vmin)
@@ -87,7 +87,7 @@ if __name__=='__main__':
 
     # vmax
     if args.vmax=='default':
-        vmax=np.ma.max(data)
+        vmax=np.nanmax(data)
     else:
         try:
             vmax=float(args.vmax)

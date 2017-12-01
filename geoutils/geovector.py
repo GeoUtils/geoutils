@@ -270,9 +270,9 @@ Additionally, a number of instances are available in the class.
         north, east = -np.inf, -np.inf
         south, west = np.inf, np.inf
 
-        for feat in range(self.layer.GetFeatureCount()):
-            feature = self.layer.GetFeature(feat)
-            geometry = feature.GetGeometryRef()
+        self.layer.ResetReading()
+        for feat in self.layer:
+            geometry = feat.GetGeometryRef()
             x1, x2, y1, y2 = geometry.GetEnvelope()
 
             if north < y2:

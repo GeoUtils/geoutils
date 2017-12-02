@@ -185,34 +185,54 @@ def coreg_with_master_dem(args):
     slave_dem = raster.SingleBandRaster(args.slave_dem)
     slave_dem.r = np.float32(slave_dem.r)
     if args.nodata2!='none':
-      nodata = float(args.nodata2)
+      nodata2 = float(args.nodata2)
     else:
       band=slave_dem.ds.GetRasterBand(1)
-      nodata = band.GetNoDataValue()
+      nodata2 = band.GetNoDataValue()
+
+    # master, read intersection only
+    extent = slave_dem.intersection(args.master_dem)
+    master_dem = DEMRaster(args.master_dem,load_data=extent, latlon=False)
+    master_dem.r = np.float32(master_dem.r)
+    if args.nodata1!='none':
+        master_dem.r[master_dem.r==float(args.nodata1)] = np.nan
+    else:
+        band=master_dem.ds.GetRasterBand(1)
+        nodata1 = band.GetNoDataValue()
+        master_dem.r[master_dem.r==nodata1] = np.nan
 
     ## reproject slave DEM into the master DEM spatial reference system ##
     if master_dem.r.shape!=slave_dem.r.shape:
       if args.grid=='master':
+        
         print "Reproject slave DEM"
-        dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata, interp_type=gdal.GRA_Bilinear,progress=True).r
+        dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata2, interp_type=gdal.GRA_Bilinear,progress=True).r
+        gt = (master_dem.extent[0], master_dem.xres, 0.0, master_dem.extent[3], 0.0, master_dem.yres)  # Save GeoTransform for saving
+        
       elif args.grid=='slave':
+        
         print "Reproject master DEM"
-        master_dem = master_dem.reproject(slave_dem.srs, slave_dem.nx, slave_dem.ny, slave_dem.extent[0], slave_dem.extent[3], slave_dem.xres, slave_dem.yres, dtype=6, nodata=nodata, interp_type=gdal.GRA_Bilinear,progress=True)
+        master_dem = master_dem.reproject(slave_dem.srs, slave_dem.nx, slave_dem.ny, slave_dem.extent[0], slave_dem.extent[3], slave_dem.xres, slave_dem.yres, dtype=6, nodata=nodata1, interp_type=gdal.GRA_Bilinear,progress=True)
         master_dem = DEMRaster(master_dem.ds)  # convert it to a DEMRaster object for later use of specific functions
         dem2coreg=slave_dem.r
+        gt = (slave_dem.extent[0], slave_dem.xres, 0.0, slave_dem.extent[3], 0.0, slave_dem.yres)  # Save GeoTransform for saving
+        
       else:
         sys.exit("Error : grid must be 'master' or 'slave'")
+        
     else:
       dem2coreg = slave_dem.r
+      gt = (master_dem.extent[0], master_dem.xres, 0.0, master_dem.extent[3], 0.0, master_dem.yres)  # Save GeoTransform for saving
+      
+    dem2coreg[dem2coreg==nodata2] = np.nan
 
-    dem2coreg[dem2coreg==nodata] = np.nan
 
     ## mask points ##
     if args.maskfile!='none':
         mask = raster.SingleBandRaster(args.maskfile)
         if master_dem.r.shape!=mask.r.shape:
           print "Reproject mask"
-          mask = mask.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata, interp_type=gdal.GRA_NearestNeighbour,progress=True)  # nearest neighbor interpolation
+          mask = mask.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, interp_type=gdal.GRA_NearestNeighbour,progress=True)  # nearest neighbor interpolation
 
         master_dem.r[mask.r>0] = np.nan
 
@@ -335,7 +355,7 @@ def coreg_with_master_dem(args):
       fname, ext = os.path.splitext(args.outfile)
       fname+='_ramp.TIF'
       #fname = WD+'/ramp.out'
-      raster.simple_write_geotiff(fname, ramp(X,Y), master_dem.ds.GetGeoTransform(), wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
+      raster.simple_write_geotiff(fname, ramp(X,Y), gt, wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
       #ramp(X,Y).tofile(fname)
       print "Ramp saved in %s" %fname
       
@@ -369,7 +389,7 @@ def coreg_with_master_dem(args):
 
     #Save to output file
     #dtype = master_dem.ds.GetRasterBand(1).DataType
-    raster.simple_write_geotiff(args.outfile, dem2coreg, master_dem.ds.GetGeoTransform(), wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
+    raster.simple_write_geotiff(args.outfile, dem2coreg, gt, wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
 
 
 def read_icesat_elev(is_files,RoI):

@@ -116,12 +116,13 @@ def horizontal_shift(dh,slope,aspect,plot=False):
 
     return east, north, c
 
-def deramping(diff,X,Y,plot=False):
+def deramping(diff,X,Y,d=1,plot=False):
   """
   Estimate a ramp (tilt) in elevation difference between two DEMs.
   Inputs :
   - diff : array, elevation difference between the two DEMs
   - X, Y : arrays, X, Y position of the elevation difference in any system
+  - d : degree of the polynomial to remove (deg 1: a0 + a1*X + a2*Y; deg 2: a0 +a1*X +a2*Y + a3*X**2 +a4*X*Y + a5*Y**2)
   - plot : i f set to True, plots are displayed
   Returns :
   - ramp : a function that defines the estimated ramp, if two arguments X,Y are passed, return the value of the ramp at each location
@@ -132,12 +133,24 @@ def deramping(diff,X,Y,plot=False):
   # mad=1.4826*np.median(np.abs(diff[np.isfinite(diff)]-med))
   # diff[np.abs(diff)>3*mad] = np.nan
 
-  #Least square fit   
-  def peval(X,Y,p):
-    return p[0] + p[1]*X + p[2]*Y
+  #Least square fit
+  def poly2D(X,Y,p,d):
+    """
+    Calculate the elements of a 2D polynomial of degree d, with coefficients p. The index of p increases with monomial degree, then with power of X increasing and power of Y decreasing. E.g. for degree 2:
+    p[0] + p[1] * X + p[2] * Y + p[3] * X**2 +p[4] * X*Y +p[5] * Y**2
+    p must be of size (d+1)*(d+2)/2
+    """
+    psize = (d+1)*(d+2)/2
+    if len(p)!=psize:
+      print("ERROR: p must be of size (d+1)*(d+2)/2 = %i" %psize)
+      return None
+    else:
+      # k is degree considered, j is power of Y varying from 0 to k, k-j is power of X varying from k to 0, k*(k+1)/2 + j is index of the coefficient
+      return np.sum([p[k*(k+1)/2+j]*X**(k-j)*Y**j for k in xrange(d+1) for j in xrange(k+1)],axis=0)
+    
 
-  def residuals(p,z,X,Y):
-    err = peval(X,Y,p)-z
+  def residuals(p,z,X,Y,d):
+    err = poly2D(X,Y,p,d)-z
     err = err[np.isfinite(err)]
     return err
 
@@ -145,23 +158,33 @@ def deramping(diff,X,Y,plot=False):
   x = X[np.isfinite(diff)]
   y = Y[np.isfinite(diff)]
 
-  plsq = leastsq(residuals, (0,0,0), args = (z,x,y),full_output = 1)
-  zfit = peval(X,Y,plsq[0])
-
+  # reduce number of elements for speed
+  if len(x)>5e5:
+    inds = np.random.randint(0,len(x)-1,5e5)
+    x = x[inds]
+    y = y[inds]
+    z = z[inds]
+    
+  p0 = np.zeros((d+1)*(d+2)/2)   # inital guess for the polynomial coeff
+  plsq = leastsq(residuals, p0, args = (z,x,y,d),full_output = 1)
+  zfit = poly2D(X,Y,plsq[0],d)
+  
   if plot==True:
+    vmax1 = np.nanmax(np.abs(diff))
+    vmax2 = np.nanmax(np.abs(diff-zfit))
     pl.figure('before')
-    pl.imshow(diff,vmin=-4,vmax=4)
+    pl.imshow(diff,vmin=-vmax1,vmax=vmax1,cmap='RdYlBu')
     pl.colorbar()
     pl.figure('after')
-    pl.imshow(diff-zfit,vmin=-4,vmax=4)
+    pl.imshow(diff-zfit,vmin=-vmax2,vmax=vmax2,cmap='RdYlBu')
     pl.colorbar()
     pl.figure('ramp')
-    pl.imshow(zfit)
+    pl.imshow(zfit,cmap='RdYlBu',vmin=-vmax1,vmax=vmax1)
     pl.colorbar()
     pl.show()
 
   def ramp(X,Y):
-    return peval(X,Y,plsq[0])
+    return poly2D(X,Y,plsq[0],d)
 
   return ramp
 
@@ -264,7 +287,7 @@ def coreg_with_master_dem(args):
     ## Display
     if args.plot==True:
       maxval = 3*NMAD_old #np.percentile(np.abs(diff_before[np.isfinite(diff_before)]),90)
-      pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
+      pl.imshow(diff_before,vmin=-maxval,vmax=maxval,cmap='RdYlBu')
       cb=pl.colorbar()
       cb.set_label('Elevation difference (m)')
       pl.show()
@@ -353,7 +376,7 @@ def coreg_with_master_dem(args):
     diff[np.abs(diff-med)>3*mad] = np.nan
 
     # estimate a ramp and remove it
-    ramp = deramping(diff,X,Y,plot=args.plot)
+    ramp = deramping(diff,X,Y,d=args.degree,plot=args.plot)
     dem2coreg-=ramp(X,Y)
 
     # save to output file
@@ -379,11 +402,11 @@ def coreg_with_master_dem(args):
         diff_after = dem2coreg - master_dem.r
 
         pl.figure('before')
-        pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
+        pl.imshow(diff_before,vmin=-maxval,vmax=maxval,cmap='RdYlBu')
         cb = pl.colorbar()
         cb.set_label('DEM difference (m)')
         pl.figure('after')
-        pl.imshow(diff_after,vmin=-maxval,vmax=maxval)
+        pl.imshow(diff_after,vmin=-maxval,vmax=maxval,cmap='RdYlBu')
         cb = pl.colorbar()
         cb.set_label('DEM difference (m)')
         #pl.show()
@@ -582,7 +605,7 @@ def coreg_with_IceSAT(args):
     dh[np.abs(dh-med)>3*mad] = np.nan
 
     # estimate a ramp and remove it
-    ramp = deramping(dh,xx,yy,plot=False)
+    ramp = deramping(dh,xx,yy,d=args.degree,plot=False)
 
     # compute stats of deramped dh
     tmp = dh-ramp(X,Y) ;
@@ -673,6 +696,7 @@ if __name__=='__main__':
     parser.add_argument('-zmax', dest='zmax', type=str, default='none', help='float, points with altitude above zmax are masked during the vertical alignment, e.g snow covered areas (default none)')
     parser.add_argument('-zmin', dest='zmin', type=str, default='none', help='float, points with altitude below zmin are masked during the vertical alignment, e.g points on sea (default none)')
     parser.add_argument('-resmax', dest='resmax', type=str, default='none', help='float, maximum value of the residuals, points where |dh|>resmax are considered as outliers and removed (default none)')
+    parser.add_argument('-deg', dest='degree', type=int, default=1, help='int, degree of the polynomial to be fit to residuals and removed (default is 1=tilt)')
     parser.add_argument('-grid', dest='grid', type=str, default='master', help="'master' or 'slave' : common grid to use for the DEMs (default is master DEM grid)")
     parser.add_argument('-save', dest='save', help='Save horizontal offset as a text file and ramp as a GTiff file',action='store_true')
     parser.add_argument('-IS', dest='IS', help='Master DEM are IceSAT data instead of a raster DEM. master_dem must then be a string to the file name or regular expression to several files (use quotes)',action='store_true')

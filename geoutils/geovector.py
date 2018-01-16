@@ -170,7 +170,7 @@ Additionally, a number of instances are available in the class.
         
         # For multiple layers
         # self.ds.layer = []
-        # for i in xrange(self.ds.GetLayerCount()):
+        # for i in range(self.ds.GetLayerCount()):
         # self.ds.layer.append(self.ds.GetLayerByIndex)
 
         # Get georeferencing infos
@@ -195,7 +195,7 @@ Additionally, a number of instances are available in the class.
         # IntegerList, RealList, StringList, Integer64List not implemented yet.
         OGR2np = {'Integer':'i4','Real':'d','String':'S','Binary':'S','Date':'S','Time':'S','DateTime':'S','Integer64':'i8'}
 
-        for k in xrange(len(fields.dtype)):
+        for k in range(len(fields.dtype)):
             dtype = OGR2np[fields.dtype[k]]
             if dtype=='S':
                 dtype+=str(fields._size[k])
@@ -223,7 +223,7 @@ Additionally, a number of instances are available in the class.
         
         #Initialize dictionnary containing fields data
         self.fields.values = {}
-        for k in xrange(len(self.fields.name)):
+        for k in range(len(self.fields.name)):
             f = self.fields.name[k]
             dtype = self.fields.dtype[k]
             self.fields.values[f] = np.empty(nFeat,dtype=dtype)
@@ -234,7 +234,7 @@ Additionally, a number of instances are available in the class.
 
         features = []
         if subset=='all':
-            for i in xrange(nFeat):
+            for i in range(nFeat):
                 #read each feature
                 feat = self.layer.GetNextFeature()
                 if str(feat)=='None':  # in case features are miscounted
@@ -542,7 +542,7 @@ Additionally, a number of instances are available in the class.
         # output values to be stored in this list
         outputs = []
 
-        for k in xrange(len(subset)):
+        for k in range(len(subset)):
 
             # Progressbar
             gdal.TermProgress_nocb(float(k)/(len(subset)-1))
@@ -849,9 +849,9 @@ class Shape():
 
             #POLYGONS
             if self.geom.GetGeometryName()=='POLYGON':
-                for i in xrange(self.geom.GetGeometryCount()):
+                for i in range(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
-                    for j in xrange(poly.GetPointCount()):
+                    for j in range(poly.GetPointCount()):
                         vertices.append([poly.GetX(j),poly.GetY(j)])
                         if j==0:
                             codes.append(Path.MOVETO)
@@ -861,12 +861,12 @@ class Shape():
                             codes.append(Path.LINETO)
         
             elif self.geom.GetGeometryName()=='MULTIPOLYGON':
-                for i in xrange(self.geom.GetGeometryCount()):
+                for i in range(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
 
-                    for j in xrange(poly.GetGeometryCount()):
+                    for j in range(poly.GetGeometryCount()):
                         ring = poly.GetGeometryRef(j)
-                        for k in xrange(ring.GetPointCount()):
+                        for k in range(ring.GetPointCount()):
                             vertices.append([ring.GetX(k),ring.GetY(k)])
                             if k==0:
                                 codes.append(Path.MOVETO)
@@ -877,7 +877,7 @@ class Shape():
     
             #LINESTRING
             elif self.geom.GetGeometryName()=='LINESTRING':
-                for j in xrange(self.geom.GetPointCount()):
+                for j in range(self.geom.GetPointCount()):
                     vertices.append([self.geom.GetX(j),self.geom.GetY(j)])
                     if j==0:
                         codes.append(Path.MOVETO)
@@ -886,9 +886,9 @@ class Shape():
 
             #MULTILINESTRING
             elif self.geom.GetGeometryName()=='MULTILINESTRING':
-                for i in xrange(self.geom.GetGeometryCount()):
+                for i in range(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
-                    for k in xrange(poly.GetPointCount()):
+                    for k in range(poly.GetPointCount()):
                         vertices.append([poly.GetX(k),poly.GetY(k)])
                         if k==0:
                             codes.append(Path.MOVETO)
@@ -1051,7 +1051,7 @@ class Shape():
             #expand profile every spacing meters
             new_x, new_y = [], []
             new_dist = []
-            for i in xrange(len(x)-1):
+            for i in range(len(x)-1):
 
                 #compute distance between point and next
                 if not self.srs.IsProjected():
@@ -1116,7 +1116,7 @@ def save_shapefile(filename,gv_obj):
     ## Loop through the input features
     
     nfeat = len(gv_obj.features)
-    for k in xrange(nfeat):
+    for k in range(nfeat):
         
         inFeature = gv_obj.features[k]
         # get the input geometry

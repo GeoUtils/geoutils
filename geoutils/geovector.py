@@ -7,7 +7,10 @@ import matplotlib.pyplot as pl
 import numpy as np
 import numbers
 from copy import deepcopy
-import mpl_toolkits.basemap.pyproj as pyproj
+try:
+    import pyproj
+except ImportError:
+    import mpl_toolkits.basemap.pyproj as pyproj
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 from matplotlib import cm
@@ -160,7 +163,7 @@ Additionally, a number of instances are available in the class.
 
         # Check to see if shapefile is found.
         if self.ds is None:
-            print 'Could not open %s' % (ds_filename)
+            print('Could not open %s' % (ds_filename))
 
         #Get layer
         self.layer = self.ds.GetLayer()
@@ -351,7 +354,7 @@ Additionally, a number of instances are available in the class.
         """
 
         if not hasattr(self,'features'):
-            print "You must run self.read() first"
+            print("You must run self.read() first")
             return 0
 
         if subset=='all':
@@ -395,7 +398,7 @@ Additionally, a number of instances are available in the class.
         """
 
         if not hasattr(self,'features'):
-            print "You must run self.read() first"
+            print("You must run self.read() first")
             return 0
 
         if subset=='all':
@@ -609,9 +612,9 @@ Additionally, a number of instances are available in the class.
             x_min, x_max, y_min, y_max = extent
             ysize = abs((x_max-x_min)/xres)
             xsize = abs((y_max-y_min)/yres)
-            print xsize, ysize
+            print(xsize, ysize)
             if xsize%1!=0 or ysize%1!=0:
-                print "ERROR : extent not a multiple of xres/yres"
+                print("ERROR : extent not a multiple of xres/yres")
                 return
             else:
                 xsize=int(xsize)
@@ -893,7 +896,7 @@ class Shape():
                             codes.append(Path.LINETO)
 
             else:
-                print "Geometry type %s not implemented" %self.geom.GetGeometryName()
+                print("Geometry type %s not implemented" %self.geom.GetGeometryName())
                 sys.exit(1)
 
             self.vertices = vertices   #list of vertices
@@ -1101,7 +1104,7 @@ def save_shapefile(filename,gv_obj):
         try:
             fieldDefn = ogr.FieldDefn(key, np2OGR[dt.char])
         except KeyError:
-            print "ERROR: data type %s not implemented!" %dt
+            print("ERROR: data type %s not implemented!" %dt)
             sys.exit(1)
             
         if dt.char=='S':

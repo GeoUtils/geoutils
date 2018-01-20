@@ -647,9 +647,10 @@ Additionally, a number of instances are available in the class.
         return datamask
 
 
-    def create_mask_attr(self,raster,attr):
+    def create_mask_attr(self,raster,attr,from_ds=True):
         """
-        Return a raster (Float32) containing the values of attr for each polygon in self, in the Spatial Reference and resolution of raster
+        Return a raster (Float32) containing the values of attr for each polygon in self, in the Spatial Reference and resolution of raster.
+	If from_ds is set to True, will use only the values saved on disk, otherwise will use the values from the georaster object.
         """
 
         # Open the raster file
@@ -667,24 +668,54 @@ Additionally, a number of instances are available in the class.
         # Make the target raster have the same projection as the source raster
         target_ds.SetProjection(raster.srs.ExportToWkt())
 
-        #loop on features
-        for feat in self.features:
+        ## Loop on features ##
 
-            # Create a memory layer to rasterize from.
-            input_raster = ogr.GetDriverByName('Memory').CreateDataSource('')
-            layer = input_raster.CreateLayer('poly', srs=self.srs)
+        if from_ds==True:
 
-            # Add polygon
-    #        feat = ogr.Feature(layer.GetLayerDefn())
-    #        feat.SetGeometry(feature.GetGeometryRef())
-            layer.CreateFeature(feat)
+            self.layer.ResetReading()
+            feat = self.layer.GetNextFeature()
+            k=0
+            while feat:
+                gdal.TermProgress_nocb(float(k)/(FeatureCount()-1))
+                
+                # Create a memory layer to rasterize from.
+                input_raster = ogr.GetDriverByName('Memory').CreateDataSource('')
+                layer = input_raster.CreateLayer('poly', srs=self.srs)
 
-            # Rasterize
-            err = gdal.RasterizeLayer(target_ds, [1], layer,burn_values=[feat.GetField(attr)])
+                # Add polygon
+                layer.CreateFeature(feat)
 
-            if err != 0:
-                raise Exception("error rasterizing layer: %s" % err)
+                # Rasterize
+                err = gdal.RasterizeLayer(target_ds, [1], layer,burn_values=[feat.GetField(attr)])
 
+                if err != 0:
+                    raise Exception("error rasterizing layer: %s" % err)
+
+                # Read mask raster as arrays
+                bandmask = target_ds.GetRasterBand(1)
+                datamask = bandmask.ReadAsArray(0, 0, ysize, xsize)
+
+                feat = self.layer.GetNextFeature()
+
+        else:
+
+            for k in xrange(len(self.features)):
+                gdal.TermProgress_nocb(float(k)/(len(self.features)-1))
+                
+                # Create a memory layer to rasterize from.
+                input_raster = ogr.GetDriverByName('Memory').CreateDataSource('')
+                layer = input_raster.CreateLayer('poly', srs=self.srs)
+
+                # Add polygon
+                feat = self.features[k]
+                layer.CreateFeature(feat)
+
+                # Rasterize
+                err = gdal.RasterizeLayer(target_ds, [1], layer,burn_values=[self.fields.values[attr][k]])
+
+                if err != 0:
+                    raise Exception("error rasterizing layer: %s" % err)
+                    
             # Read mask raster as arrays
             bandmask = target_ds.GetRasterBand(1)
             datamask = bandmask.ReadAsArray(0, 0, ysize, xsize)
@@ -746,6 +777,10 @@ Additionally, a number of instances are available in the class.
     def clip_raster(self,inraster,outfile,feature='all',masking=False,nodata_value=None, downsampl=1):
         """
         Clip a raster to the extent of the vector layer.
+        TO DO:
+        - issues with no data for integer types
+        - feature!='all' does not work with masking=True, all features are extracted instead of the selected ones. Use layer.Set...Filter instead.
+        - Implement for MultiBandRaster
         """
 
         # Read raster headers

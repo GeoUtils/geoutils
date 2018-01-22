@@ -7,7 +7,10 @@ import matplotlib.pyplot as pl
 import numpy as np
 import numbers
 from copy import deepcopy
-import mpl_toolkits.basemap.pyproj as pyproj
+try:
+    import pyproj
+except ImportError:
+    import mpl_toolkits.basemap.pyproj as pyproj
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 from matplotlib import cm
@@ -23,7 +26,7 @@ except ImportError:
 
 #Personal libraries
 import georaster as raster
-import geometry as geo
+from geoutils import geometry as geo
 
 """
 geovector.py
@@ -160,14 +163,14 @@ Additionally, a number of instances are available in the class.
 
         # Check to see if shapefile is found.
         if self.ds is None:
-            print 'Could not open %s' % (ds_filename)
+            print('Could not open %s' % (ds_filename))
 
         #Get layer
         self.layer = self.ds.GetLayer()
         
         # For multiple layers
         # self.ds.layer = []
-        # for i in xrange(self.ds.GetLayerCount()):
+        # for i in range(self.ds.GetLayerCount()):
         # self.ds.layer.append(self.ds.GetLayerByIndex)
 
         # Get georeferencing infos
@@ -192,7 +195,7 @@ Additionally, a number of instances are available in the class.
         # IntegerList, RealList, StringList, Integer64List not implemented yet.
         OGR2np = {'Integer':'i4','Real':'d','String':'S','Binary':'S','Date':'S','Time':'S','DateTime':'S','Integer64':'i8'}
 
-        for k in xrange(len(fields.dtype)):
+        for k in range(len(fields.dtype)):
             dtype = OGR2np[fields.dtype[k]]
             if dtype=='S':
                 dtype+=str(fields._size[k])
@@ -220,7 +223,7 @@ Additionally, a number of instances are available in the class.
         
         #Initialize dictionnary containing fields data
         self.fields.values = {}
-        for k in xrange(len(self.fields.name)):
+        for k in range(len(self.fields.name)):
             f = self.fields.name[k]
             dtype = self.fields.dtype[k]
             self.fields.values[f] = np.empty(nFeat,dtype=dtype)
@@ -231,7 +234,7 @@ Additionally, a number of instances are available in the class.
 
         features = []
         if subset=='all':
-            for i in xrange(nFeat):
+            for i in range(nFeat):
                 #read each feature
                 feat = self.layer.GetNextFeature()
                 if str(feat)=='None':  # in case features are miscounted
@@ -351,7 +354,7 @@ Additionally, a number of instances are available in the class.
         """
 
         if not hasattr(self,'features'):
-            print "You must run self.read() first"
+            print("You must run self.read() first")
             return 0
 
         if subset=='all':
@@ -395,7 +398,7 @@ Additionally, a number of instances are available in the class.
         """
 
         if not hasattr(self,'features'):
-            print "You must run self.read() first"
+            print("You must run self.read() first")
             return 0
 
         if subset=='all':
@@ -565,7 +568,7 @@ Additionally, a number of instances are available in the class.
 
         if nbands==1:
             
-            for k in xrange(len(subset)):
+            for k in range(len(subset)):
 
                 # Progressbar
                 gdal.TermProgress_nocb(float(k)/(len(subset)-1))
@@ -621,7 +624,7 @@ Additionally, a number of instances are available in the class.
 
         else:
                 
-            for k in xrange(len(subset)):
+            for k in range(len(subset)):
 
                 # Progressbar
                 gdal.TermProgress_nocb(float(k)/(len(subset)-1))
@@ -679,9 +682,9 @@ Additionally, a number of instances are available in the class.
             x_min, x_max, y_min, y_max = extent
             ysize = abs((x_max-x_min)/xres)
             xsize = abs((y_max-y_min)/yres)
-            print xsize, ysize
+
             if xsize%1!=0 or ysize%1!=0:
-                print "ERROR : extent not a multiple of xres/yres"
+                print("ERROR : extent not a multiple of xres/yres")
                 return
             else:
                 xsize=int(xsize)
@@ -769,7 +772,7 @@ Additionally, a number of instances are available in the class.
 
         else:
 
-            for k in xrange(len(self.features)):
+            for k in range(len(self.features)):
                 gdal.TermProgress_nocb(float(k)/(len(self.features)-1))
                 
                 # Create a memory layer to rasterize from.
@@ -951,9 +954,9 @@ class Shape():
 
             #POLYGONS
             if self.geom.GetGeometryName()=='POLYGON':
-                for i in xrange(self.geom.GetGeometryCount()):
+                for i in range(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
-                    for j in xrange(poly.GetPointCount()):
+                    for j in range(poly.GetPointCount()):
                         vertices.append([poly.GetX(j),poly.GetY(j)])
                         if j==0:
                             codes.append(Path.MOVETO)
@@ -963,12 +966,12 @@ class Shape():
                             codes.append(Path.LINETO)
         
             elif self.geom.GetGeometryName()=='MULTIPOLYGON':
-                for i in xrange(self.geom.GetGeometryCount()):
+                for i in range(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
 
-                    for j in xrange(poly.GetGeometryCount()):
+                    for j in range(poly.GetGeometryCount()):
                         ring = poly.GetGeometryRef(j)
-                        for k in xrange(ring.GetPointCount()):
+                        for k in range(ring.GetPointCount()):
                             vertices.append([ring.GetX(k),ring.GetY(k)])
                             if k==0:
                                 codes.append(Path.MOVETO)
@@ -979,7 +982,7 @@ class Shape():
     
             #LINESTRING
             elif self.geom.GetGeometryName()=='LINESTRING':
-                for j in xrange(self.geom.GetPointCount()):
+                for j in range(self.geom.GetPointCount()):
                     vertices.append([self.geom.GetX(j),self.geom.GetY(j)])
                     if j==0:
                         codes.append(Path.MOVETO)
@@ -988,9 +991,9 @@ class Shape():
 
             #MULTILINESTRING
             elif self.geom.GetGeometryName()=='MULTILINESTRING':
-                for i in xrange(self.geom.GetGeometryCount()):
+                for i in range(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
-                    for k in xrange(poly.GetPointCount()):
+                    for k in range(poly.GetPointCount()):
                         vertices.append([poly.GetX(k),poly.GetY(k)])
                         if k==0:
                             codes.append(Path.MOVETO)
@@ -998,7 +1001,7 @@ class Shape():
                             codes.append(Path.LINETO)
 
             else:
-                print "Geometry type %s not implemented" %self.geom.GetGeometryName()
+                print("Geometry type %s not implemented" %self.geom.GetGeometryName())
                 sys.exit(1)
 
             self.vertices = vertices   #list of vertices
@@ -1153,7 +1156,7 @@ class Shape():
             #expand profile every spacing meters
             new_x, new_y = [], []
             new_dist = []
-            for i in xrange(len(x)-1):
+            for i in range(len(x)-1):
 
                 #compute distance between point and next
                 if not self.srs.IsProjected():
@@ -1206,7 +1209,7 @@ def save_shapefile(filename,gv_obj):
         try:
             fieldDefn = ogr.FieldDefn(key, np2OGR[dt.char])
         except KeyError:
-            print "ERROR: data type %s not implemented!" %dt
+            print("ERROR: data type %s not implemented!" %dt)
             sys.exit(1)
             
         if dt.char=='S':
@@ -1218,7 +1221,7 @@ def save_shapefile(filename,gv_obj):
     ## Loop through the input features
     
     nfeat = len(gv_obj.features)
-    for k in xrange(nfeat):
+    for k in range(nfeat):
         
         inFeature = gv_obj.features[k]
         # get the input geometry

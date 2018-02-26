@@ -747,9 +747,11 @@ Additionally, a number of instances are available in the class.
 
             self.layer.ResetReading()
             feat = self.layer.GetNextFeature()
+            nfeat = self.FeatureCount()
+            
             k=0
             while feat:
-                gdal.TermProgress_nocb(float(k)/(FeatureCount()-1))
+                gdal.TermProgress_nocb(float(k)/(nfeat-1))
                 
                 # Create a memory layer to rasterize from.
                 input_raster = ogr.GetDriverByName('Memory').CreateDataSource('')
@@ -768,12 +770,13 @@ Additionally, a number of instances are available in the class.
                 bandmask = target_ds.GetRasterBand(1)
                 datamask = bandmask.ReadAsArray(0, 0, ysize, xsize)
 
-                feat = self.layer.GetNextFeature()
+                feat = self.layer.GetNextFeature(); k+=1
 
         else:
 
-            for k in range(len(self.features)):
-                gdal.TermProgress_nocb(float(k)/(len(self.features)-1))
+            nfeat = len(self.features)
+            for k in range(nfeat):
+                gdal.TermProgress_nocb(float(k)/(nfeat-1))
                 
                 # Create a memory layer to rasterize from.
                 input_raster = ogr.GetDriverByName('Memory').CreateDataSource('')
@@ -822,9 +825,31 @@ Additionally, a number of instances are available in the class.
         right,top = pyproj_obj(xur,yur)
         return (left,right,bottom,top)
 
-    def extract_value_from_raster(self,rs,spacing='none',bands=0):
+    def extract_value_from_raster(self, rs, spacing='none', bands=0, order=1, from_ds=False, warning=True):
         """
         Extract raster values at the location of the feature vertices. Return as many arrays as features in the vector file.
+        Warning, for the moment, from_ds=False is default and raster must be loaded into memory as interp with option from_ds=True has only order=0 implemented.
+
+        :param rs: raster to extract data from.
+        :type rs: georaster class
+        :param spacing: spacing of the extracted values. By Default is at vertices, but can be set to a regular distance in the same units as the vector file spatial reference system.
+        :param bands: Bands to extract for MultiBandRaster objects. Can be an 
+            int, list, tuple, numpy array or 'all' to extract all bands 
+            (Default is first band).
+        :type bands: int, list, tuple, np.array 
+        :param order: order of the spline interpolation (range 0-5), \
+          0=nearest-neighbor, 1=bilinear (default), 2-5 does not seem to \ 
+          work with NaNs.
+        :type order: int
+        :param warning: bool, if set to True, will display a warning when 
+            the coordinates fall outside the range
+        :type warning: bool
+        :param from_ds: If True extract data directly from dataset (instead of
+            using in-memory version, if available)
+        :type from_ds: bool
+
+        :returns: interpolated raster values, list of list, contains as many items as features in self.
+        :rtype: list
         """
 
         interp_values = []
@@ -837,9 +862,9 @@ Additionally, a number of instances are available in the class.
             else:
                 x,y = sh.regularise(spacing)
             if not self.srs.IsProjected():
-                temp_values = rs.interp_from_ds(x,y,latlon=True,bands=bands)
+                temp_values = rs.interp(x, y, latlon=True, bands=bands, order=order, from_ds=from_ds, warning=warning)
             else:
-                temp_values = rs.interp_from_ds(x,y,latlon=False,bands=bands)
+                temp_values = rs.interp(x, y, latlon=False, bands=bands, order=order, from_ds=from_ds, warning=warning)
             interp_values.append(temp_values)
             XX.append(x)
             YY.append(y)

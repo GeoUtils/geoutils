@@ -278,14 +278,14 @@ Additionally, a number of instances are available in the class.
             geometry = feat.GetGeometryRef()
             x1, x2, y1, y2 = geometry.GetEnvelope()
 
-            if north < y2:
-                north = y2
-            if south > y1:
-                south = y1
-            if east < x1:
-                east = x1
-            if west > x2:
-                west = x2
+            if north < max(y1,y2):
+                north = max(y1,y2)
+            if south > min(y1,y2):
+                south = min(y1,y2)
+            if east < max(x1,x2):
+                east = max(x1,x2)
+            if west > min(x1,x2):
+                west = min(x1,x2)
 
         self.extent = (west, east, south, north)
 
@@ -819,7 +819,10 @@ Additionally, a number of instances are available in the class.
             (left,right,bottom,top)
 
         """
-        xll,xur,yll,yur = self.extent
+        if self.proj != None:
+            xll,xur,yll,yur = self.get_extent_latlon()
+        else:
+            xll,xur,yll,yur = self.extent
 
         left,bottom = pyproj_obj(xll,yll)
         right,top = pyproj_obj(xur,yur)

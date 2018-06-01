@@ -545,7 +545,7 @@ Additionally, a number of instances are available in the class.
         for k in range(len(subset)):
 
             # Progressbar
-            gdal.TermProgress_nocb(float(k)/(len(subset)-1))
+            gdal.TermProgress_nocb(float(k)/(len(subset)))
 
             # Read feature geometry and reproject to raster projection
             feat = self.features[subset[k]].Clone()  # clone needed to not modify input layer

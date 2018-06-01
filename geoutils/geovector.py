@@ -505,7 +505,7 @@ Additionally, a number of instances are available in the class.
         self.crop(left,right,bottom,up)
 
     
-    def zonal_statistics(self,rs,operator,subset='all',nodata=None):
+    def zonal_statistics(self,rs,operator,subset='all',nodata=None, **kwargs):
         """
         Compute statistics of the data in rasterfile for each feature in self.
         For now, only implemented for SingleBandRaster.
@@ -514,6 +514,8 @@ Additionally, a number of instances are available in the class.
         - operator: the aggregation operator to be applied to the data, e.g. np.mean, np.std etc
         - subset : indices of the features to compute (Default is 'all')
         - nodata : specify a no data value (Default will read value from metadata)
+
+        **kwargs will be passed to operator
         """
 
         # Read raster
@@ -581,9 +583,9 @@ Additionally, a number of instances are available in the class.
             # Compute statistics
             if len(data)>0:
                 if callable(operator):  # case only 1 operator
-                    outputs.append(operator(data))
+                    outputs.append(operator(data, **kwargs))
                 elif (isinstance(operator,list) or isinstance(operator,tuple)): # case list of operators
-                    output = [op(data) for op in operator]
+                    output = [op(data, **kwargs) for op in operator]
                     outputs.append(output)
                     
             else:

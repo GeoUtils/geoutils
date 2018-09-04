@@ -7,7 +7,10 @@ import matplotlib.pyplot as pl
 import numpy as np
 import numbers
 from copy import deepcopy
-import mpl_toolkits.basemap.pyproj as pyproj
+try:
+    import pyproj
+except ImportError:
+    import mpl_toolkits.basemap.pyproj as pyproj
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 from matplotlib import cm
@@ -23,7 +26,7 @@ except ImportError:
 
 #Personal libraries
 import georaster as raster
-import geometry as geo
+from geoutils import geometry as geo
 
 """
 geovector.py
@@ -190,14 +193,14 @@ Additionally, a number of instances are available in the class.
 
         # Check to see if shapefile is found.
         if self.ds is None:
-            print 'Could not open %s' % (ds_filename)
+            print('Could not open %s' % (ds_filename))
 
         #Get layer
         self.layer = self.ds.GetLayer()
         
         # For multiple layers
         # self.ds.layer = []
-        # for i in xrange(self.ds.GetLayerCount()):
+        # for i in range(self.ds.GetLayerCount()):
         # self.ds.layer.append(self.ds.GetLayerByIndex)
 
         # Get georeferencing infos
@@ -222,7 +225,7 @@ Additionally, a number of instances are available in the class.
         # IntegerList, RealList, StringList, Integer64List not implemented yet.
         OGR2np = {'Integer':'i4','Real':'d','String':'S','Binary':'S','Date':'S','Time':'S','DateTime':'S','Integer64':'i8'}
 
-        for k in xrange(len(fields.dtype)):
+        for k in range(len(fields.dtype)):
             dtype = OGR2np[fields.dtype[k]]
             if dtype=='S':
                 dtype+=str(fields._size[k])
@@ -250,7 +253,7 @@ Additionally, a number of instances are available in the class.
         
         #Initialize dictionnary containing fields data
         self.fields.values = {}
-        for k in xrange(len(self.fields.name)):
+        for k in range(len(self.fields.name)):
             f = self.fields.name[k]
             dtype = self.fields.dtype[k]
             self.fields.values[f] = np.empty(nFeat,dtype=dtype)
@@ -261,7 +264,7 @@ Additionally, a number of instances are available in the class.
 
         features = []
         if subset=='all':
-            for i in xrange(nFeat):
+            for i in range(nFeat):
                 #read each feature
                 feat = self.layer.GetNextFeature()
                 if str(feat)=='None':  # in case features are miscounted
@@ -305,14 +308,14 @@ Additionally, a number of instances are available in the class.
             geometry = feat.GetGeometryRef()
             x1, x2, y1, y2 = geometry.GetEnvelope()
 
-            if north < y2:
-                north = y2
-            if south > y1:
-                south = y1
-            if east < x1:
-                east = x1
-            if west > x2:
-                west = x2
+            if north < max(y1,y2):
+                north = max(y1,y2)
+            if south > min(y1,y2):
+                south = min(y1,y2)
+            if east < max(x1,x2):
+                east = max(x1,x2)
+            if west > min(x1,x2):
+                west = min(x1,x2)
 
         self.extent = (west, east, south, north)
 
@@ -381,7 +384,7 @@ Additionally, a number of instances are available in the class.
         """
 
         if not hasattr(self,'features'):
-            print "You must run self.read() first"
+            print("You must run self.read() first")
             return 0
 
         if subset=='all':
@@ -425,7 +428,7 @@ Additionally, a number of instances are available in the class.
         """
 
         if not hasattr(self,'features'):
-            print "You must run self.read() first"
+            print("You must run self.read() first")
             return 0
 
         if subset=='all':
@@ -532,26 +535,50 @@ Additionally, a number of instances are available in the class.
         self.crop(left,right,bottom,up)
 
     
-    def zonal_statistics(self,rs,operator,subset='all',nodata=None):
+    def zonal_statistics(self,rs,operator,subset='all',nodata=None,bands='all'):
         """
         Compute statistics of the data in rasterfile for each feature in self.
-        For now, only implemented for SingleBandRaster.
+        A MultiBandRaster object is accepted, but it won't work with several operators at a time. If several bands are selected, the operator will be applied to all bands together. The different bands will be stored in the 2nd dimension, therefore an operator like np.mean(...,axis=0) will return the average for each band individually. 
+	Uses np.ma.masked_array for MultiBandRasters, so the operator might need to extract only the array, (e.g. np.mean(X,axis=0).data).
         Inputs :
         - rs: a georaster.SingleBandRaster instance or a filename
         - operator: the aggregation operator to be applied to the data, e.g. np.mean, np.std etc
         - subset : indices of the features to compute (Default is 'all')
         - nodata : specify a no data value (Default will read value from metadata)
+	- bands : bands to be used in case of a MultiBandRaster
         """
 
         # Read raster
         if isinstance(rs,raster.SingleBandRaster):
             img = rs
-        elif isinstance(H,str):
-            img = raster.SingleBandRaster(rs)
+            nbands = 1
+        elif isinstance(rs,raster.MultiBandRaster):
+            img = rs
+            nbands = img.r.shape[2]
+        elif isinstance(rs,str):
+            ds = gdal.Open(rs)
+            nbands = ds.RasterCount
+
+            # Set default value for bands
+            if (bands=='all') & (nbands>1):
+                bands = np.arange(nbands)
+            else:
+                bands = tuple(bands)
+                nbands = len(bands)
+
+            img = raster.MultiBandRaster(rs,bands=bands)
+
         else:
-            'ERROR: raster must be either a georaster.SingleBandRaster instance or a string (path to filename), now is %s' %type(raster)
+            'ERROR: raster must be either a georaster instance or a string (path to filename), now is %s' %type(raster)
             return 0
 
+        # Warning for multiband rasters, several operators not implemented
+        if nbands>1:
+            if (isinstance(operator,list) or isinstance(operator,tuple)):
+                print("ERROR: case of multiple operators not implemeted for multiple bands.")
+                return 0
+
+        # raster extent
         xl, xr, yd, yu = img.extent
 
         if nodata==None:
@@ -569,60 +596,106 @@ Additionally, a number of instances are available in the class.
         # output values to be stored in this list
         outputs = []
 
-        for k in xrange(len(subset)):
-
-            # Progressbar
-            gdal.TermProgress_nocb(float(k)/(len(subset)-1))
-
-            # Read feature geometry and reproject to raster projection
-            feat = self.features[subset[k]].Clone()  # clone needed to not modify input layer
-            sh = Shape(feat,load_data=False)
-            sh.geom.Transform(coordTrans)
-            sh.read()
-
-            # Read feature extent and compare to rater extent. Features not entirely inside raster extent are excluded
-            xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
-            if ((xmax>xr) or (xmin<xl) or (ymin<yd) or (ymax>yu)):
-                outputs.append(np.nan)
-                continue
+        if nbands==1:
             
-            # Look only for points within the box of the feature
-            i1, j1 = img.coord_to_px(xmin,ymin)
-            i2, j2 = img.coord_to_px(xmax,ymax)
-            jinds = np.arange(j2,j1+1,dtype='int64')
-            iinds = np.arange(i1,i2+1,dtype='int64')
-            ii, jj = np.meshgrid(iinds,jinds)
-            X, Y = img.coordinates(Xpixels=ii,Ypixels=jj)
+            for k in range(len(subset)):
 
-            # Select data within the feature
-            inside = geo.points_inside_polygon(X,Y,sh.vertices,skip_holes=False)
-            inside_i = ii[inside==True]
-            inside_j = jj[inside==True]
-            data = img.r[inside_j,inside_i]
+                # Progressbar
+                gdal.TermProgress_nocb(float(k)/(len(subset)-1))
 
-            # Filter no data values
-            data = data[~np.isnan(data)]
-            if nodata!='':
-                data = data[data!=nodata]
+                # Read feature geometry and reproject to raster projection
+                feat = self.features[subset[k]].Clone()  # clone needed to not modify input layer
+                sh = Shape(feat,load_data=False)
+                sh.geom.Transform(coordTrans)
+                sh.read()
 
-            # Compute statistics
-            if len(data)>0:
-                if callable(operator):  # case only 1 operator
-                    outputs.append(operator(data))
-                elif (isinstance(operator,list) or isinstance(operator,tuple)): # case list of operators
-                    output = [op(data) for op in operator]
-                    outputs.append(output)
-                    
-            else:
-                if callable(operator):
+                # Read feature extent and compare to raster extent. Features not entirely inside raster extent are excluded
+                xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
+                if ((xmax>xr) or (xmin<xl) or (ymin<yd) or (ymax>yu)):
                     outputs.append(np.nan)
-                elif (isinstance(operator,list) or isinstance(operator,tuple)):
-                    outputs.append(np.nan*np.zeros(len(operator)))
+                    continue
 
-        # If multiple operators, has to transpose the list
-        if isinstance(outputs[0],list):
-            outputs = np.transpose(outputs)
+                # Look only for points within the box of the feature
+                i1, j1 = img.coord_to_px(xmin,ymin)
+                i2, j2 = img.coord_to_px(xmax,ymax)
+                jinds = np.arange(j2,j1+1,dtype='int64')
+                iinds = np.arange(i1,i2+1,dtype='int64')
+                ii, jj = np.meshgrid(iinds,jinds)
+                X, Y = img.coordinates(Xpixels=ii,Ypixels=jj)
 
+                # Select data within the feature
+                inside = geo.points_inside_polygon(X,Y,sh.vertices,skip_holes=False)
+                inside_i = ii[inside==True]
+                inside_j = jj[inside==True]
+                data = img.r[inside_j,inside_i]
+
+                # Filter no data values
+                data = data[~np.isnan(data)]
+                if nodata!='':
+                    data = data[data!=nodata]
+
+                # Compute statistics
+                if len(data)>0:
+                    if callable(operator):  # case only 1 operator
+                        outputs.append(operator(data))
+                    elif (isinstance(operator,list) or isinstance(operator,tuple)): # case list of operators
+                        output = [op(data) for op in operator]
+                        outputs.append(output)
+
+                else:
+                    if callable(operator):
+                        outputs.append(np.nan)
+                    elif (isinstance(operator,list) or isinstance(operator,tuple)):
+                        outputs.append(np.nan*np.zeros(len(operator)))
+
+            # If multiple operators, has to transpose the list
+            if isinstance(outputs[0],list):
+                outputs = np.transpose(outputs)
+
+        else:
+                
+            for k in range(len(subset)):
+
+                # Progressbar
+                gdal.TermProgress_nocb(float(k)/(len(subset)-1))
+
+                # Read feature geometry and reproject to raster projection
+                feat = self.features[subset[k]].Clone()  # clone needed to not modify input layer
+                sh = Shape(feat,load_data=False)
+                sh.geom.Transform(coordTrans)
+                sh.read()
+
+                # Read feature extent and compare to raster extent. Features not entirely inside raster extent are excluded
+                xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
+                if ((xmax>xr) or (xmin<xl) or (ymin<yd) or (ymax>yu)):
+                    outputs.append(np.nan)
+                    continue
+
+                # Look only for points within the box of the feature
+                i1, j1 = img.coord_to_px(xmin,ymin)
+                i2, j2 = img.coord_to_px(xmax,ymax)
+                jinds = np.arange(j2,j1+1,dtype='int64')
+                iinds = np.arange(i1,i2+1,dtype='int64')
+                ii, jj = np.meshgrid(iinds,jinds)
+                X, Y = img.coordinates(Xpixels=ii,Ypixels=jj)
+
+                # Select data within the feature
+                inside = geo.points_inside_polygon(X,Y,sh.vertices,skip_holes=False)
+                inside_i = ii[inside==True]
+                inside_j = jj[inside==True]
+                data = img.r[inside_j,inside_i]
+
+                # Filter no data values
+                data = np.ma.masked_array(data,mask=(np.isnan(data)))
+                if (nodata!='') & (nodata!=None):
+                    data.mask[data==nodata] = True
+
+                # Compute statistics
+                if len(data[data.mask==False])>0:
+                        outputs.append(operator(data))
+                else:
+                        outputs.append([np.nan,]*nbands)
+    
         return outputs
 
 
@@ -639,9 +712,9 @@ Additionally, a number of instances are available in the class.
             x_min, x_max, y_min, y_max = extent
             ysize = abs((x_max-x_min)/xres)
             xsize = abs((y_max-y_min)/yres)
-            print xsize, ysize
+
             if xsize%1!=0 or ysize%1!=0:
-                print "ERROR : extent not a multiple of xres/yres"
+                print("ERROR : extent not a multiple of xres/yres")
                 return
             else:
                 xsize=int(xsize)
@@ -677,9 +750,10 @@ Additionally, a number of instances are available in the class.
         return datamask
 
 
-    def create_mask_attr(self,raster,attr):
+    def create_mask_attr(self,raster,attr,from_ds=True):
         """
-        Return a raster (Float32) containing the values of attr for each polygon in self, in the Spatial Reference and resolution of raster
+        Return a raster (Float32) containing the values of attr for each polygon in self, in the Spatial Reference and resolution of raster.
+	If from_ds is set to True, will use only the values saved on disk, otherwise will use the values from the georaster object.
         """
 
         # Open the raster file
@@ -697,24 +771,57 @@ Additionally, a number of instances are available in the class.
         # Make the target raster have the same projection as the source raster
         target_ds.SetProjection(raster.srs.ExportToWkt())
 
-        #loop on features
-        for feat in self.features:
+        ## Loop on features ##
 
-            # Create a memory layer to rasterize from.
-            input_raster = ogr.GetDriverByName('Memory').CreateDataSource('')
-            layer = input_raster.CreateLayer('poly', srs=self.srs)
+        if from_ds==True:
 
-            # Add polygon
-    #        feat = ogr.Feature(layer.GetLayerDefn())
-    #        feat.SetGeometry(feature.GetGeometryRef())
-            layer.CreateFeature(feat)
+            self.layer.ResetReading()
+            feat = self.layer.GetNextFeature()
+            nfeat = self.FeatureCount()
+            
+            k=0
+            while feat:
+                gdal.TermProgress_nocb(float(k)/(nfeat-1))
+                
+                # Create a memory layer to rasterize from.
+                input_raster = ogr.GetDriverByName('Memory').CreateDataSource('')
+                layer = input_raster.CreateLayer('poly', srs=self.srs)
 
-            # Rasterize
-            err = gdal.RasterizeLayer(target_ds, [1], layer,burn_values=[feat.GetField(attr)])
+                # Add polygon
+                layer.CreateFeature(feat)
 
-            if err != 0:
-                raise Exception("error rasterizing layer: %s" % err)
+                # Rasterize
+                err = gdal.RasterizeLayer(target_ds, [1], layer,burn_values=[feat.GetField(attr)])
 
+                if err != 0:
+                    raise Exception("error rasterizing layer: %s" % err)
+
+                # Read mask raster as arrays
+                bandmask = target_ds.GetRasterBand(1)
+                datamask = bandmask.ReadAsArray(0, 0, ysize, xsize)
+
+                feat = self.layer.GetNextFeature(); k+=1
+
+        else:
+
+            nfeat = len(self.features)
+            for k in range(nfeat):
+                gdal.TermProgress_nocb(float(k)/(nfeat-1))
+                
+                # Create a memory layer to rasterize from.
+                input_raster = ogr.GetDriverByName('Memory').CreateDataSource('')
+                layer = input_raster.CreateLayer('poly', srs=self.srs)
+
+                # Add polygon
+                feat = self.features[k]
+                layer.CreateFeature(feat)
+
+                # Rasterize
+                err = gdal.RasterizeLayer(target_ds, [1], layer,burn_values=[self.fields.values[attr][k]])
+
+                if err != 0:
+                    raise Exception("error rasterizing layer: %s" % err)
+                    
             # Read mask raster as arrays
             bandmask = target_ds.GetRasterBand(1)
             datamask = bandmask.ReadAsArray(0, 0, ysize, xsize)
@@ -742,15 +849,40 @@ Additionally, a number of instances are available in the class.
             (left,right,bottom,top)
 
         """
-        xll,xur,yll,yur = self.extent
+        if self.proj != None:
+            xll,xur,yll,yur = self.get_extent_latlon()
+        else:
+            xll,xur,yll,yur = self.extent
 
         left,bottom = pyproj_obj(xll,yll)
         right,top = pyproj_obj(xur,yur)
         return (left,right,bottom,top)
 
-    def extract_value_from_raster(self,rs,spacing='none',bands=0):
+    def extract_value_from_raster(self, rs, spacing='none', bands=0, order=1, from_ds=False, warning=True):
         """
         Extract raster values at the location of the feature vertices. Return as many arrays as features in the vector file.
+        Warning, for the moment, from_ds=False is default and raster must be loaded into memory as interp with option from_ds=True has only order=0 implemented.
+
+        :param rs: raster to extract data from.
+        :type rs: georaster class
+        :param spacing: spacing of the extracted values. By Default is at vertices, but can be set to a regular distance in the same units as the vector file spatial reference system.
+        :param bands: Bands to extract for MultiBandRaster objects. Can be an 
+            int, list, tuple, numpy array or 'all' to extract all bands 
+            (Default is first band).
+        :type bands: int, list, tuple, np.array 
+        :param order: order of the spline interpolation (range 0-5), \
+          0=nearest-neighbor, 1=bilinear (default), 2-5 does not seem to \ 
+          work with NaNs.
+        :type order: int
+        :param warning: bool, if set to True, will display a warning when 
+            the coordinates fall outside the range
+        :type warning: bool
+        :param from_ds: If True extract data directly from dataset (instead of
+            using in-memory version, if available)
+        :type from_ds: bool
+
+        :returns: interpolated raster values, list of list, contains as many items as features in self.
+        :rtype: list
         """
 
         interp_values = []
@@ -763,9 +895,9 @@ Additionally, a number of instances are available in the class.
             else:
                 x,y = sh.regularise(spacing)
             if not self.srs.IsProjected():
-                temp_values = rs.interp_from_ds(x,y,latlon=True,bands=bands)
+                temp_values = rs.interp(x, y, latlon=True, bands=bands, order=order, from_ds=from_ds, warning=warning)
             else:
-                temp_values = rs.interp_from_ds(x,y,latlon=False,bands=bands)
+                temp_values = rs.interp(x, y, latlon=False, bands=bands, order=order, from_ds=from_ds, warning=warning)
             interp_values.append(temp_values)
             XX.append(x)
             YY.append(y)
@@ -776,6 +908,10 @@ Additionally, a number of instances are available in the class.
     def clip_raster(self,inraster,outfile,feature='all',masking=False,nodata_value=None, downsampl=1):
         """
         Clip a raster to the extent of the vector layer.
+        TO DO:
+        - issues with no data for integer types
+        - feature!='all' does not work with masking=True, all features are extracted instead of the selected ones. Use layer.Set...Filter instead.
+        - Implement for MultiBandRaster
         """
 
         # Read raster headers
@@ -901,9 +1037,9 @@ class Shape():
 
             #POLYGONS
             if self.geom.GetGeometryName()=='POLYGON':
-                for i in xrange(self.geom.GetGeometryCount()):
+                for i in range(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
-                    for j in xrange(poly.GetPointCount()):
+                    for j in range(poly.GetPointCount()):
                         vertices.append([poly.GetX(j),poly.GetY(j)])
                         if j==0:
                             codes.append(Path.MOVETO)
@@ -913,12 +1049,12 @@ class Shape():
                             codes.append(Path.LINETO)
         
             elif self.geom.GetGeometryName()=='MULTIPOLYGON':
-                for i in xrange(self.geom.GetGeometryCount()):
+                for i in range(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
 
-                    for j in xrange(poly.GetGeometryCount()):
+                    for j in range(poly.GetGeometryCount()):
                         ring = poly.GetGeometryRef(j)
-                        for k in xrange(ring.GetPointCount()):
+                        for k in range(ring.GetPointCount()):
                             vertices.append([ring.GetX(k),ring.GetY(k)])
                             if k==0:
                                 codes.append(Path.MOVETO)
@@ -929,7 +1065,7 @@ class Shape():
     
             #LINESTRING
             elif self.geom.GetGeometryName()=='LINESTRING':
-                for j in xrange(self.geom.GetPointCount()):
+                for j in range(self.geom.GetPointCount()):
                     vertices.append([self.geom.GetX(j),self.geom.GetY(j)])
                     if j==0:
                         codes.append(Path.MOVETO)
@@ -938,9 +1074,9 @@ class Shape():
 
             #MULTILINESTRING
             elif self.geom.GetGeometryName()=='MULTILINESTRING':
-                for i in xrange(self.geom.GetGeometryCount()):
+                for i in range(self.geom.GetGeometryCount()):
                     poly = self.geom.GetGeometryRef(i)
-                    for k in xrange(poly.GetPointCount()):
+                    for k in range(poly.GetPointCount()):
                         vertices.append([poly.GetX(k),poly.GetY(k)])
                         if k==0:
                             codes.append(Path.MOVETO)
@@ -948,7 +1084,7 @@ class Shape():
                             codes.append(Path.LINETO)
 
             else:
-                print "Geometry type %s not implemented" %self.geom.GetGeometryName()
+                print("Geometry type %s not implemented" %self.geom.GetGeometryName())
                 sys.exit(1)
 
             self.vertices = vertices   #list of vertices
@@ -1103,7 +1239,7 @@ class Shape():
             #expand profile every spacing meters
             new_x, new_y = [], []
             new_dist = []
-            for i in xrange(len(x)-1):
+            for i in range(len(x)-1):
 
                 #compute distance between point and next
                 if not self.srs.IsProjected():
@@ -1156,7 +1292,7 @@ def save_shapefile(filename,gv_obj):
         try:
             fieldDefn = ogr.FieldDefn(key, np2OGR[dt.char])
         except KeyError:
-            print "ERROR: data type %s not implemented!" %dt
+            print("ERROR: data type %s not implemented!" %dt)
             sys.exit(1)
             
         if dt.char=='S':
@@ -1168,7 +1304,7 @@ def save_shapefile(filename,gv_obj):
     ## Loop through the input features
     
     nfeat = len(gv_obj.features)
-    for k in xrange(nfeat):
+    for k in range(nfeat):
         
         inFeature = gv_obj.features[k]
         # get the input geometry

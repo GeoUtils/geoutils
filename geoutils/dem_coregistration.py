@@ -160,7 +160,7 @@ def deramping(diff,X,Y,d=1,plot=False):
 
   # reduce number of elements for speed
   if len(x)>5e5:
-    inds = np.random.randint(0,len(x)-1,5e5)
+    inds = np.random.randint(0,len(x)-1,int(5e5))
     x = x[inds]
     y = y[inds]
     z = z[inds]
@@ -200,10 +200,11 @@ def coreg_with_master_dem(args):
     master_dem.r = np.float32(master_dem.r)
     if args.nodata1!='none':
         master_dem.r[master_dem.r==float(args.nodata1)] = np.nan
+        nodata1 = float(args.nodata1)
     else:
         band=master_dem.ds.GetRasterBand(1)
-        nodata = band.GetNoDataValue()
-        master_dem.r[master_dem.r==nodata] = np.nan
+        nodata1 = band.GetNoDataValue()
+        master_dem.r[master_dem.r==nodata1] = np.nan
 
     # slave
     slave_dem = raster.SingleBandRaster(args.slave_dem)
@@ -215,15 +216,15 @@ def coreg_with_master_dem(args):
       nodata2 = band.GetNoDataValue()
 
     # master, read intersection only
-    extent = slave_dem.intersection(args.master_dem)
-    master_dem = DEMRaster(args.master_dem,load_data=extent, latlon=False)
-    master_dem.r = np.float32(master_dem.r)
-    if args.nodata1!='none':
-        master_dem.r[master_dem.r==float(args.nodata1)] = np.nan
-    else:
-        band=master_dem.ds.GetRasterBand(1)
-        nodata1 = band.GetNoDataValue()
-        master_dem.r[master_dem.r==nodata1] = np.nan
+    # extent = slave_dem.intersection(args.master_dem)
+    # master_dem = DEMRaster(args.master_dem,load_data=extent, latlon=False)
+    # master_dem.r = np.float32(master_dem.r)
+    # if args.nodata1!='none':
+    #     master_dem.r[master_dem.r==float(args.nodata1)] = np.nan
+    # else:
+    #     band=master_dem.ds.GetRasterBand(1)
+    #     nodata1 = band.GetNoDataValue()
+    #     master_dem.r[master_dem.r==nodata1] = np.nan
 
     ## reproject slave DEM into the master DEM spatial reference system ##
     if master_dem.r.shape!=slave_dem.r.shape:
@@ -366,9 +367,10 @@ def coreg_with_master_dem(args):
       diff[master_dem.r<int(args.zmin)] = np.nan
 
     # remove points with slope higher than 40° that are more error-prone
-    slope, aspect = master_dem.compute_slope()
-    diff[slope>=40*np.pi/180] = np.nan
-    diff[np.isnan(slope)] = np.nan
+    # removed until issue with Nan is fixed, see previous commit
+    #slope, aspect = master_dem.compute_slope()
+    #diff[slope>=40*np.pi/180] = np.nan
+    #diff[np.isnan(slope)] = np.nan
 
     # remove outliers
     med = np.median(diff[np.isfinite(diff)])

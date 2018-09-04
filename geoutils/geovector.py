@@ -96,6 +96,36 @@ class Object(object):
     pass
 
 
+## Some utility functions ##
+
+def addPolygon(simplePolygon, out_lyr):
+    """
+    A function used to add a polygon to a layer
+    """
+    featureDefn = out_lyr.GetLayerDefn()
+    polygon = ogr.CreateGeometryFromWkb(simplePolygon)
+    out_feat = ogr.Feature(featureDefn)
+    out_feat.SetGeometry(polygon)
+    out_lyr.CreateFeature(out_feat)
+
+
+def multipoly2poly(in_lyr, out_lyr):
+    """
+    Convert a MultiPolygon feature into a Polygon for simplification.
+    """
+    k=0
+    for in_feat in in_lyr:
+        geom = in_feat.GetGeometryRef()
+        if geom.GetGeometryName() == 'MULTIPOLYGON':
+            geom_part=geom.GetGeometryRef(0)
+            addPolygon(geom_part.ExportToWkb(), out_lyr)
+        else:
+            addPolygon(geom.ExportToWkb(), out_lyr)
+        k+=1
+
+
+
+
 class SingleLayerVector:
 
     def __init__(self,ds_filename,load_data=True,latlon=True,band=1):
@@ -796,6 +826,31 @@ Additionally, a number of instances are available in the class.
         else:
             return img
             
+    def create_simplified_geometry(self):
+        """
+        From a layer containing many MultiPolygons or Polygons, generate a single geometry, that can be used more efficiently to calculate intersection with other objects.
+        """
+        
+        ## Replace MultiPolygons by Polygons ##
+        nfeat = self.FeatureCount()  # somehow necessary for the loop on features to work                                                                                                            
+        print "%i features to process" %nfeat
+
+        out_ds = ogr.GetDriverByName('Memory').CreateDataSource('')
+        out_lyr = out_ds.CreateLayer('poly', srs=self.srs)
+        multipoly2poly(self.layer, out_lyr)
+
+        ## Create a single geometry ##
+        union = ogr.Geometry(ogr.wkbMultiPolygon)
+        for feat in out_lyr:
+            union.AddGeometry(feat.GetGeometryRef())
+        union=union.Simplify(0)
+
+        # Check that geometry is valid (otherwise will fail later)
+        if not union.IsValid():
+            print "ERROR with geometry"
+            return 0
+        else:
+            return union
 
 
 class Shape():

@@ -199,12 +199,10 @@ def coreg_with_master_dem(args):
     master_dem = DEMRaster(args.master_dem)
     master_dem.r = np.float32(master_dem.r)
     if args.nodata1!='none':
-        master_dem.r[master_dem.r==float(args.nodata1)] = np.nan
         nodata1 = float(args.nodata1)
     else:
         band=master_dem.ds.GetRasterBand(1)
         nodata1 = band.GetNoDataValue()
-        master_dem.r[master_dem.r==nodata1] = np.nan
 
     # slave
     slave_dem = raster.SingleBandRaster(args.slave_dem)
@@ -238,7 +236,7 @@ def coreg_with_master_dem(args):
         
         print "Reproject master DEM"
         master_dem = master_dem.reproject(slave_dem.srs, slave_dem.nx, slave_dem.ny, slave_dem.extent[0], slave_dem.extent[3], slave_dem.xres, slave_dem.yres, dtype=6, nodata=nodata1, interp_type=gdal.GRA_Bilinear,progress=True)
-        master_dem = DEMRaster(master_dem.ds)  # convert it to a DEMRaster object for later use of specific functions
+        #master_dem = DEMRaster(master_dem.ds)  # convert it to a DEMRaster object for later use of specific functions
         dem2coreg=slave_dem.r
         gt = (slave_dem.extent[0], slave_dem.xres, 0.0, slave_dem.extent[3], 0.0, slave_dem.yres)  # Save GeoTransform for saving
         
@@ -248,9 +246,9 @@ def coreg_with_master_dem(args):
     else:
       dem2coreg = slave_dem.r
       gt = (master_dem.extent[0], master_dem.xres, 0.0, master_dem.extent[3], 0.0, master_dem.yres)  # Save GeoTransform for saving
-      
-    dem2coreg[dem2coreg==nodata2] = np.nan
 
+    if nodata1 is not None: master_dem.r[master_dem.r==nodata1] = np.nan
+    if nodata2 is not None: dem2coreg[dem2coreg==nodata2] = np.nan
 
     ## mask points ##
     if args.maskfile!='none':

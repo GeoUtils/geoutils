@@ -14,6 +14,7 @@ from __future__ import print_function
 import os, sys, argparse
 import matplotlib.pyplot as plt
 import numpy as np
+import numbers
 
 #Personal libraries
 import georaster as raster
@@ -31,8 +32,8 @@ if __name__=='__main__':
 
     #optional arguments
     parser.add_argument('-cmap', dest='cmap', type=str, default='default', help='str, a matplotlib colormap string (default is from rcParams).')
-    parser.add_argument('-vmin', dest='vmin', type=str, default='default', help='float, the minimum value for colorscale (default is calculated min value).')
-    parser.add_argument('-vmax', dest='vmax', type=str, default='default', help='float, the maximum value for colorscale (default is calculated max value).')
+    parser.add_argument('-vmin', dest='vmin', type=str, default='default', help='float, the minimum value for colorscale, or can be expressed as a percentile e.g. 5% (default is calculated min value).')
+    parser.add_argument('-vmax', dest='vmax', type=str, default='default', help='float, the maximum value for colorscale, or can be expressed as a percentile e.g. 95% (default is calculated max value).')
     parser.add_argument('-band', dest='band', type=int, default=0, help='int, which band to display (start at 0) for multiband images (Default is 0).')
     parser.add_argument('-nocb', dest='nocb', help='If set, will not display a colorbar (Default is to display the colorbar).',action='store_true')
     parser.add_argument('-clabel', dest='clabel', type=str, default='', help='str, the label for the colorscale (Default is empty).')
@@ -79,21 +80,30 @@ if __name__=='__main__':
     if args.vmin=='default':
         vmin=np.nanmin(data)
     else:
-        try:
+        if isinstance(args.vmin,numbers.Number):
             vmin=float(args.vmin)
-        except ValueError:
-            print("ERROR: vmin must be a float, currently set to %s" %args.vmin)
-            sys.exit(1)
+        else:
+            try:
+                perc = args.vmin.split('%')[0]
+                vmin = np.percentile(data[data.mask==False],perc)
+            except ValueError:
+                print("ERROR: vmin must be a float or percentage, currently set to %s" %args.vmin)
+                sys.exit(1)
 
     # vmax
     if args.vmax=='default':
         vmax=np.nanmax(data)
     else:
-        try:
+        if isinstance(args.vmax,numbers.Number):
             vmax=float(args.vmax)
-        except ValueError:
-            print("ERROR: vmax must be a float, currently set to %s" %args.vmax)
-            sys.exit(1)
+        else:
+            try:
+                perc = args.vmax.split('%')[0]
+                vmax = np.percentile(data[data.mask==False],perc)
+            except ValueError:
+                print("ERROR: vmax must be a float or percentage, currently set to %s" %args.vmax)
+                sys.exit(1)
+        
 
     # color map
     if args.cmap=='default':

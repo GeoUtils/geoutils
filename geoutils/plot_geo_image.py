@@ -80,13 +80,16 @@ if __name__=='__main__':
     if args.vmin=='default':
         vmin=np.nanmin(data)
     else:
-        if isinstance(args.vmin,numbers.Number):
-            vmin=float(args.vmin)
-        else:
+        try:
+            vmin = float(args.vmin)
+        except ValueError:   # Case is not a number
             try:
-                perc = args.vmin.split('%')[0]
-                vmin = np.percentile(data[data.mask==False],perc)
-            except ValueError:
+                perc, _ = args.vmin.split('%')
+                if nodata!=None:
+                    vmin = np.nanpercentile(data[data.mask==False],perc)
+                else:
+                    vmin = np.nanpercentile(data,perc)
+            except ValueError:   # Case no % sign
                 print("ERROR: vmin must be a float or percentage, currently set to %s" %args.vmin)
                 sys.exit(1)
 
@@ -94,16 +97,19 @@ if __name__=='__main__':
     if args.vmax=='default':
         vmax=np.nanmax(data)
     else:
-        if isinstance(args.vmax,numbers.Number):
-            vmax=float(args.vmax)
-        else:
+        try:
+            vmax = float(args.vmax)
+        except ValueError:   # Case is not a number
             try:
-                perc = args.vmax.split('%')[0]
-                vmax = np.percentile(data[data.mask==False],perc)
-            except ValueError:
+                perc, _ = args.vmax.split('%')
+                if nodata!=None:
+                    vmax = np.nanpercentile(data[data.mask==False],perc)
+                else:
+                    vmax = np.nanpercentile(data,perc)
+            except ValueError:   # Case no % sign
                 print("ERROR: vmax must be a float or percentage, currently set to %s" %args.vmax)
                 sys.exit(1)
-        
+    print(vmin, vmax)
 
     # color map
     if args.cmap=='default':

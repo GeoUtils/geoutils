@@ -109,7 +109,7 @@ if __name__=='__main__':
             except ValueError:   # Case no % sign
                 print("ERROR: vmax must be a float or percentage, currently set to %s" %args.vmax)
                 sys.exit(1)
-    print(vmin, vmax)
+
 
     # color map
     if args.cmap=='default':

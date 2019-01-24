@@ -51,44 +51,42 @@ def horizontal_shift(dh,slope,aspect,plot=False):
     Inputs :
     - dh : array, elevation difference master_dem - slave_dem
     - slope/aspect : array, slope and aspect for the same locations as the dh
+    - plot : bool, set to True to display the slope/aspect graph
     Returns :
     - east, north, c : f, estimated easting and northing of the shift, c is not used here but is related to the vertical shift
     """
 
-    # function to be correlated with terrain aspect
-    target = dh/slope
-    target = target[np.isfinite(dh)]
-    aspect = aspect[np.isfinite(dh)]
-
-    # compute median value for different aspect slices
-    slice_bounds = np.arange(0,2*np.pi,np.pi/36)
-    mean=np.zeros([len(slice_bounds)])
-    x_s=np.zeros([len(slice_bounds)])
-    j=0
-    for i in slice_bounds:
-        target_slice = target[(i<aspect) & (aspect<i+np.pi/36)] #select target in the slice 
-        target_slice = target_slice[(target_slice<200) & (target_slice>-200)] #avoid target>200 and target<-200
-        mean[j] = np.median(target_slice) #derive mean of target in the slice
-        x_s[j] = i
-        j=j+1
-
-    #function to fit according to Nuth & Kaab
-    x=aspect.ravel()
-    y_meas = target.ravel()
+    # function to be correlated according to Nuth & Kaab
+    x = aspect
+    y = dh/slope
 
     #remove non-finite values
-    xf = x[(np.isfinite(x)) & (np.isfinite(y_meas))]
-    yf = y_meas[(np.isfinite(x)) & (np.isfinite(y_meas))]
+    xf = x[(np.isfinite(x)) & (np.isfinite(y))]
+    yf = y[(np.isfinite(x)) & (np.isfinite(y))]
 
     #remove outliers
     p1 = np.percentile(yf,1)
     p99 = np.percentile(yf,99)
-    xf = xf[(p1<yf) & (yf<p99)]
-    yf = yf[(p1<yf) & (yf<p99)]
+    valids = np.where((p1<yf) & (yf<p99) & (np.abs(yf)<200))
+    xf = xf[valids]
+    yf = yf[valids]
 
+    # compute median value for different aspect slices
+    slice_bounds = np.arange(0,2*np.pi,np.pi/36)
+    y_med=np.zeros([len(slice_bounds)])
+    j=0
+    for i in slice_bounds:
+        yf_slice = yf[(i<xf) & (xf<i+np.pi/36)] # extract y values in bin
+        y_med[j] = np.median(yf_slice) # calculate median
+        j=j+1
 
+    # Define y and x for the function fit
+    yobs = y_med[np.isfinite(y_med)]
+    xs = slice_bounds[np.isfinite(y_med)]
+
+      
     #First guess
-    p0 = (3*np.std(yf)/(2**0.5),0,np.mean(yf))
+    p0 = (3*np.std(yobs)/(2**0.5),0,np.mean(yobs))
 
     #Least square fit   
     def peval(x,p):
@@ -98,14 +96,15 @@ def horizontal_shift(dh,slope,aspect,plot=False):
         err = peval(x,p)-y
         return err
 
-    plsq = leastsq(residuals, p0, args = (mean,x_s),full_output = 1)
-    yfit = peval(x_s,plsq[0])
+    plsq = leastsq(residuals, p0, args = (yobs,xs),full_output = 1)
+    # plsq = leastsq(residuals, p0, args = (yf,xf),full_output = 1)
+    yfit = peval(slice_bounds,plsq[0])
 
     #plotting results
     if plot==True:
-        pl.plot(x_s,mean,'b.')
-        pl.plot(x_s,yfit,'k-')
-        #ax.set_ylim([np.min(mean),])
+        ax1 = pl.subplot(111)
+        p1 = ax1.plot(xs,yobs,'b.',label='Obs.',ms=12)
+        p2 = ax1.plot(slice_bounds,yfit,'k-',label='Fit',lw=2)
         pl.xlabel('Terrain aspect (rad)')
         pl.ylabel(r'dh/tan($\alpha$)')
         pl.show()

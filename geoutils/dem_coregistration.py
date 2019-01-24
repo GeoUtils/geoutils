@@ -15,7 +15,7 @@ from scipy.optimize import leastsq
 import matplotlib.pyplot as pl
 from scipy.interpolate import RectBivariateSpline
 import argparse
-import os
+import os, sys
 import gdal
 from glob import glob
 
@@ -45,13 +45,14 @@ def grad2d(dem):
   return slope_pix,aspect
 
 
-def horizontal_shift(dh,slope,aspect,plot=False):
+def horizontal_shift(dh,slope,aspect,plot=False, min_count=30):
     """
     Compute the horizontal shift between 2 DEMs using the method presented in Nuth & Kaab 2011
     Inputs :
     - dh : array, elevation difference master_dem - slave_dem
     - slope/aspect : array, slope and aspect for the same locations as the dh
     - plot : bool, set to True to display the slope/aspect graph
+    - min_count : int, minimum number of points in aspect bins for it to be considered valid (Default is 30)
     Returns :
     - east, north, c : f, estimated easting and northing of the shift, c is not used here but is related to the vertical shift
     """
@@ -74,16 +75,36 @@ def horizontal_shift(dh,slope,aspect,plot=False):
     # compute median value for different aspect slices
     slice_bounds = np.arange(0,2*np.pi,np.pi/36)
     y_med=np.zeros([len(slice_bounds)])
+    count=np.zeros([len(slice_bounds)])
     j=0
     for i in slice_bounds:
         yf_slice = yf[(i<xf) & (xf<i+np.pi/36)] # extract y values in bin
         y_med[j] = np.median(yf_slice) # calculate median
+        count[j] = len(yf_slice)  # count number of elements
         j=j+1
 
-    # Define y and x for the function fit
-    yobs = y_med[np.isfinite(y_med)]
-    xs = slice_bounds[np.isfinite(y_med)]
+    # Filter out bins with counts below threshold
+    yobs = y_med[count>min_count]
+    xs = slice_bounds[count>min_count]
 
+    # Check that enough observations exist
+    # Should do something better, like calculating distribution of aspects
+    if len(xs)<10:
+      print("ERROR: Less than 10 different aspect exist (out of 72), increase min_count or extend the DEMs")
+      if plot==True:
+        ax1 = pl.subplot(111)
+        p1 = ax1.plot(xs,yobs,'b.',label='Obs.',ms=12)
+        pl.xlabel('Terrain aspect (rad)')
+        pl.ylabel(r'dh/tan($\alpha$)')
+        ax2 = ax1.twinx()
+        p3 = ax2.bar(slice_bounds,count,width=np.pi/36,facecolor='gray',alpha=0.2, label='count')
+        ax2.plot(xs,(min_count,)*len(xs),'k-',alpha=0.2)
+        ax2.set_ylabel('count')
+        ax2.set_xlim([np.min(slice_bounds),np.max(slice_bounds)])
+        ax1.legend(loc='best',numpoints=1)
+        pl.show()
+        
+      sys.exit(1)
       
     #First guess
     p0 = (3*np.std(yobs)/(2**0.5),0,np.mean(yobs))
@@ -107,6 +128,12 @@ def horizontal_shift(dh,slope,aspect,plot=False):
         p2 = ax1.plot(slice_bounds,yfit,'k-',label='Fit',lw=2)
         pl.xlabel('Terrain aspect (rad)')
         pl.ylabel(r'dh/tan($\alpha$)')
+        ax2 = ax1.twinx()
+        p3 = ax2.bar(slice_bounds,count,width=np.pi/36,facecolor='gray',alpha=0.2, label='count')
+        ax2.plot(slice_bounds,(min_count,)*len(slice_bounds),'k-',alpha=0.2)
+        ax2.set_ylabel('count')
+        ax2.set_xlim([np.min(slice_bounds),np.max(slice_bounds)])
+        ax1.legend(loc='best',numpoints=1)
         pl.show()
 
     a,b,c = plsq[0]
@@ -316,7 +343,7 @@ def coreg_with_master_dem(args):
         dh = master_dem.r - dem2coreg
 
         #compute offset
-        east, north, c = horizontal_shift(dh,slope,aspect,args.plot)
+        east, north, c = horizontal_shift(dh,slope,aspect,args.plot,args.min_count)
         print "#%i - Offset in pixels : (%f,%f)" %(i+1,east,north)
         xoff+=east
         yoff+=north
@@ -552,7 +579,7 @@ def coreg_with_IceSAT(args):
     for i in xrange(args.niter):
 	
         # compute aspect/dh relationship
-        east, north, c = horizontal_shift(dh,slope_at_IS,aspect_at_IS,plot=args.plot)
+        east, north, c = horizontal_shift(dh,slope_at_IS,aspect_at_IS,plot=args.plot, min_count=args.min_count)
         print "#%i - Offset in pixels : (%f,%f)" %(i+1,east,north)
         xoff+=east
         yoff+=north
@@ -692,6 +719,7 @@ if __name__=='__main__':
     parser.add_argument('-shp', dest='shp', type=str, default='none', help='str, path to a shapefile containing outlines of objects to mask, such as RGI shapefiles (default is none)')
     parser.add_argument('-n1', dest='nodata1', type=str, default='none', help='int, no data value for master DEM if not specified in the raster file (default read in the raster file)')
     parser.add_argument('-n2', dest='nodata2', type=str, default='none', help='int, no data value for slave DEM if not specified in the raster file (default read in the raster file)')
+    parser.add_argument('-min_count', dest='min_count', type=int, default=30, help='int, minimum number of points in each aspect bin to be considered valid (default is 30)')
     parser.add_argument('-zmax', dest='zmax', type=str, default='none', help='float, points with altitude above zmax are masked during the vertical alignment, e.g snow covered areas (default none)')
     parser.add_argument('-zmin', dest='zmin', type=str, default='none', help='float, points with altitude below zmin are masked during the vertical alignment, e.g points on sea (default none)')
     parser.add_argument('-resmax', dest='resmax', type=str, default='none', help='float, maximum value of the residuals, points where |dh|>resmax are considered as outliers and removed (default none)')

@@ -1273,17 +1273,18 @@ class Shape():
 np2OGR = {'i':ogr.OFTInteger,'l':ogr.OFTInteger64,'d':ogr.OFTReal, \
           'S':ogr.OFTString,'i8':ogr.OFTInteger64}
 
-def save_shapefile(filename,gv_obj):
+def save_shapefile(filename,gv_obj, format='ESRI Shapefile'):
     """
-    Save features to an ESRI shapefile.
+    Save features to a vector file.
     Inputs:
     - filename: str, path to the output file
     - gv_obj: geovector.SingleLayerVector object
+    - format: any format accepted by GDAL/OGR (Default is ESRI Shapefile)
     The script will save the features in gv_obj.features with the associated fields in gv_obj.fields.values.
     """
     
     ## Create the output layer
-    outDataSet = ogr.GetDriverByName('ESRI Shapefile').CreateDataSource(filename)
+    outDataSet = ogr.GetDriverByName(format).CreateDataSource(filename)
     outLayer = outDataSet.CreateLayer(os.path.splitext(filename)[0], gv_obj.srs,geom_type=gv_obj.layer.GetGeomType())
 
     ## Add fields

@@ -969,7 +969,7 @@ Additionally, a number of instances are available in the class.
         
         ## Replace MultiPolygons by Polygons ##
         nfeat = self.FeatureCount()  # somehow necessary for the loop on features to work                                                                                                            
-        print "%i features to process" %nfeat
+        print("%i features to process" %nfeat)
 
         out_ds = ogr.GetDriverByName('Memory').CreateDataSource('')
         out_lyr = out_ds.CreateLayer('poly', srs=self.srs)
@@ -983,7 +983,7 @@ Additionally, a number of instances are available in the class.
 
         # Check that geometry is valid (otherwise will fail later)
         if not union.IsValid():
-            print "ERROR with geometry"
+            print("ERROR with geometry")
             return 0
         else:
             return union

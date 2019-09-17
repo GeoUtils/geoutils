@@ -15,7 +15,7 @@ from scipy.optimize import leastsq
 import matplotlib.pyplot as pl
 from scipy.interpolate import RectBivariateSpline
 import argparse
-import os
+import os, sys
 import gdal
 from glob import glob
 
@@ -23,6 +23,7 @@ from glob import glob
 import georaster as raster
 from geoutils.demraster import DEMRaster
 from geoutils import geometry as geo
+from geoutils import geovector as vect
 
 #Disable warnings
 import warnings
@@ -44,50 +45,69 @@ def grad2d(dem):
   return slope_pix,aspect
 
 
-def horizontal_shift(dh,slope,aspect,plot=False):
+def horizontal_shift(dh,slope,aspect,plot=False, min_count=30):
     """
     Compute the horizontal shift between 2 DEMs using the method presented in Nuth & Kaab 2011
     Inputs :
     - dh : array, elevation difference master_dem - slave_dem
     - slope/aspect : array, slope and aspect for the same locations as the dh
+    - plot : bool, set to True to display the slope/aspect graph
+    - min_count : int, minimum number of points in aspect bins for it to be considered valid (Default is 30)
     Returns :
     - east, north, c : f, estimated easting and northing of the shift, c is not used here but is related to the vertical shift
     """
 
-    # function to be correlated with terrain aspect
-    target = dh/slope
-    target = target[np.isfinite(dh)]
-    aspect = aspect[np.isfinite(dh)]
-
-    # compute median value for different aspect slices
-    slice_bounds = np.arange(0,2*np.pi,np.pi/36)
-    mean=np.zeros([len(slice_bounds)])
-    x_s=np.zeros([len(slice_bounds)])
-    j=0
-    for i in slice_bounds:
-        target_slice = target[(i<aspect) & (aspect<i+np.pi/36)] #select target in the slice 
-        target_slice = target_slice[(target_slice<200) & (target_slice>-200)] #avoid target>200 and target<-200
-        mean[j] = np.median(target_slice) #derive mean of target in the slice
-        x_s[j] = i
-        j=j+1
-
-    #function to fit according to Nuth & Kaab
-    x=aspect.ravel()
-    y_meas = target.ravel()
+    # function to be correlated according to Nuth & Kaab
+    x = aspect
+    y = dh/slope
 
     #remove non-finite values
-    xf = x[(np.isfinite(x)) & (np.isfinite(y_meas))]
-    yf = y_meas[(np.isfinite(x)) & (np.isfinite(y_meas))]
+    xf = x[(np.isfinite(x)) & (np.isfinite(y))]
+    yf = y[(np.isfinite(x)) & (np.isfinite(y))]
 
     #remove outliers
     p1 = np.percentile(yf,1)
     p99 = np.percentile(yf,99)
-    xf = xf[(p1<yf) & (yf<p99)]
-    yf = yf[(p1<yf) & (yf<p99)]
+    valids = np.where((p1<yf) & (yf<p99) & (np.abs(yf)<200))
+    xf = xf[valids]
+    yf = yf[valids]
 
+    # compute median value for different aspect slices
+    slice_bounds = np.arange(0,2*np.pi,np.pi/36)
+    y_med=np.zeros([len(slice_bounds)])
+    count=np.zeros([len(slice_bounds)])
+    j=0
+    for i in slice_bounds:
+        yf_slice = yf[(i<xf) & (xf<i+np.pi/36)] # extract y values in bin
+        y_med[j] = np.median(yf_slice) # calculate median
+        count[j] = len(yf_slice)  # count number of elements
+        j=j+1
 
+    # Filter out bins with counts below threshold
+    yobs = y_med[count>min_count]
+    xs = slice_bounds[count>min_count]
+
+    # Check that enough observations exist
+    # Should do something better, like calculating distribution of aspects
+    if len(xs)<10:
+      print("ERROR: Less than 10 different aspect exist (out of 72), increase min_count or extend the DEMs")
+      if plot==True:
+        ax1 = pl.subplot(111)
+        p1 = ax1.plot(xs,yobs,'b.',label='Obs.',ms=12)
+        pl.xlabel('Terrain aspect (rad)')
+        pl.ylabel(r'dh/tan($\alpha$)')
+        ax2 = ax1.twinx()
+        p3 = ax2.bar(slice_bounds,count,width=np.pi/36,facecolor='gray',alpha=0.2, label='count')
+        ax2.plot(xs,(min_count,)*len(xs),'k-',alpha=0.2)
+        ax2.set_ylabel('count')
+        ax2.set_xlim([np.min(slice_bounds),np.max(slice_bounds)])
+        ax1.legend(loc='best',numpoints=1)
+        pl.show()
+        
+      sys.exit(1)
+      
     #First guess
-    p0 = (3*np.std(yf)/(2**0.5),0,np.mean(yf))
+    p0 = (3*np.std(yobs)/(2**0.5),0,np.mean(yobs))
 
     #Least square fit   
     def peval(x,p):
@@ -97,16 +117,23 @@ def horizontal_shift(dh,slope,aspect,plot=False):
         err = peval(x,p)-y
         return err
 
-    plsq = leastsq(residuals, p0, args = (mean,x_s),full_output = 1)
-    yfit = peval(x_s,plsq[0])
+    plsq = leastsq(residuals, p0, args = (yobs,xs),full_output = 1)
+    # plsq = leastsq(residuals, p0, args = (yf,xf),full_output = 1)
+    yfit = peval(slice_bounds,plsq[0])
 
     #plotting results
     if plot==True:
-        pl.plot(x_s,mean,'b.')
-        pl.plot(x_s,yfit,'k-')
-        #ax.set_ylim([np.min(mean),])
+        ax1 = pl.subplot(111)
+        p1 = ax1.plot(xs,yobs,'b.',label='Obs.',ms=12)
+        p2 = ax1.plot(slice_bounds,yfit,'k-',label='Fit',lw=2)
         pl.xlabel('Terrain aspect (rad)')
         pl.ylabel(r'dh/tan($\alpha$)')
+        ax2 = ax1.twinx()
+        p3 = ax2.bar(slice_bounds,count,width=np.pi/36,facecolor='gray',alpha=0.2, label='count')
+        ax2.plot(slice_bounds,(min_count,)*len(slice_bounds),'k-',alpha=0.2)
+        ax2.set_ylabel('count')
+        ax2.set_xlim([np.min(slice_bounds),np.max(slice_bounds)])
+        ax1.legend(loc='best',numpoints=1)
         pl.show()
 
     a,b,c = plsq[0]
@@ -115,28 +142,41 @@ def horizontal_shift(dh,slope,aspect,plot=False):
 
     return east, north, c
 
-def deramping(diff,X,Y,plot=False):
+def deramping(diff,X,Y,d=1,plot=False):
   """
   Estimate a ramp (tilt) in elevation difference between two DEMs.
   Inputs :
   - diff : array, elevation difference between the two DEMs
   - X, Y : arrays, X, Y position of the elevation difference in any system
+  - d : degree of the polynomial to remove (deg 1: a0 + a1*X + a2*Y; deg 2: a0 +a1*X +a2*Y + a3*X**2 +a4*X*Y + a5*Y**2)
   - plot : i f set to True, plots are displayed
   Returns :
   - ramp : a function that defines the estimated ramp, if two arguments X,Y are passed, return the value of the ramp at each location
   """
 
   #filter outliers
-  med = np.median(diff[np.isfinite(diff)])
-  mad=1.4826*np.median(np.abs(diff[np.isfinite(diff)]-med))
-#  diff[np.abs(diff)>3*mad] = np.nan
+  # med = np.median(diff[np.isfinite(diff)])
+  # mad=1.4826*np.median(np.abs(diff[np.isfinite(diff)]-med))
+  # diff[np.abs(diff)>3*mad] = np.nan
 
-  #Least square fit   
-  def peval(X,Y,p):
-    return p[0] + p[1]*X + p[2]*Y
+  #Least square fit
+  def poly2D(X,Y,p,d):
+    """
+    Calculate the elements of a 2D polynomial of degree d, with coefficients p. The index of p increases with monomial degree, then with power of X increasing and power of Y decreasing. E.g. for degree 2:
+    p[0] + p[1] * X + p[2] * Y + p[3] * X**2 +p[4] * X*Y +p[5] * Y**2
+    p must be of size (d+1)*(d+2)/2
+    """
+    psize = (d+1)*(d+2)/2
+    if len(p)!=psize:
+      print("ERROR: p must be of size (d+1)*(d+2)/2 = %i" %psize)
+      return None
+    else:
+      # k is degree considered, j is power of Y varying from 0 to k, k-j is power of X varying from k to 0, k*(k+1)/2 + j is index of the coefficient
+      return np.sum([p[k*(k+1)/2+j]*X**(k-j)*Y**j for k in xrange(d+1) for j in xrange(k+1)],axis=0)
+    
 
-  def residuals(p,z,X,Y):
-    err = peval(X,Y,p)-z
+  def residuals(p,z,X,Y,d):
+    err = poly2D(X,Y,p,d)-z
     err = err[np.isfinite(err)]
     return err
 
@@ -144,23 +184,33 @@ def deramping(diff,X,Y,plot=False):
   x = X[np.isfinite(diff)]
   y = Y[np.isfinite(diff)]
 
-  plsq = leastsq(residuals, (0,0,0), args = (z,x,y),full_output = 1)
-  zfit = peval(X,Y,plsq[0])
-
+  # reduce number of elements for speed
+  if len(x)>5e5:
+    inds = np.random.randint(0,len(x)-1,int(5e5))
+    x = x[inds]
+    y = y[inds]
+    z = z[inds]
+    
+  p0 = np.zeros((d+1)*(d+2)/2)   # inital guess for the polynomial coeff
+  plsq = leastsq(residuals, p0, args = (z,x,y,d),full_output = 1)
+  zfit = poly2D(X,Y,plsq[0],d)
+  
   if plot==True:
+    vmax1 = np.nanmax(np.abs(diff))
+    vmax2 = np.nanmax(np.abs(diff-zfit))
     pl.figure('before')
-    pl.imshow(diff,vmin=-4,vmax=4)
+    pl.imshow(diff,vmin=-vmax1,vmax=vmax1,cmap='RdYlBu')
     pl.colorbar()
     pl.figure('after')
-    pl.imshow(diff-zfit,vmin=-4,vmax=4)
+    pl.imshow(diff-zfit,vmin=-vmax2,vmax=vmax2,cmap='RdYlBu')
     pl.colorbar()
     pl.figure('ramp')
-    pl.imshow(zfit)
+    pl.imshow(zfit,cmap='RdYlBu',vmin=-vmax1,vmax=vmax1)
     pl.colorbar()
     pl.show()
 
   def ramp(X,Y):
-    return peval(X,Y,plsq[0])
+    return poly2D(X,Y,plsq[0],d)
 
   return ramp
 
@@ -175,46 +225,70 @@ def coreg_with_master_dem(args):
     master_dem = DEMRaster(args.master_dem)
     master_dem.r = np.float32(master_dem.r)
     if args.nodata1!='none':
-        master_dem.r[master_dem.r==float(args.nodata1)] = np.nan
+        nodata1 = float(args.nodata1)
     else:
         band=master_dem.ds.GetRasterBand(1)
-        nodata = band.GetNoDataValue()
-        master_dem.r[master_dem.r==nodata] = np.nan
+        nodata1 = band.GetNoDataValue()
 
     # slave
     slave_dem = raster.SingleBandRaster(args.slave_dem)
     slave_dem.r = np.float32(slave_dem.r)
     if args.nodata2!='none':
-      nodata = float(args.nodata2)
+      nodata2 = float(args.nodata2)
     else:
       band=slave_dem.ds.GetRasterBand(1)
-      nodata = band.GetNoDataValue()
+      nodata2 = band.GetNoDataValue()
+
+    # master, read intersection only
+    # extent = slave_dem.intersection(args.master_dem)
+    # master_dem = DEMRaster(args.master_dem,load_data=extent, latlon=False)
+    # master_dem.r = np.float32(master_dem.r)
+    # if args.nodata1!='none':
+    #     master_dem.r[master_dem.r==float(args.nodata1)] = np.nan
+    # else:
+    #     band=master_dem.ds.GetRasterBand(1)
+    #     nodata1 = band.GetNoDataValue()
+    #     master_dem.r[master_dem.r==nodata1] = np.nan
 
     ## reproject slave DEM into the master DEM spatial reference system ##
     if master_dem.r.shape!=slave_dem.r.shape:
       if args.grid=='master':
+        
         print "Reproject slave DEM"
-        dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata, interp_type=gdal.GRA_Bilinear,progress=True).r
+        dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata2, interp_type=gdal.GRA_Bilinear,progress=True).r
+        gt = (master_dem.extent[0], master_dem.xres, 0.0, master_dem.extent[3], 0.0, master_dem.yres)  # Save GeoTransform for saving
+        
       elif args.grid=='slave':
+        
         print "Reproject master DEM"
-        master_dem = master_dem.reproject(slave_dem.srs, slave_dem.nx, slave_dem.ny, slave_dem.extent[0], slave_dem.extent[3], slave_dem.xres, slave_dem.yres, dtype=6, nodata=nodata, interp_type=gdal.GRA_Bilinear,progress=True)
-        master_dem = DEMRaster(master_dem.ds)  # convert it to a DEMRaster object for later use of specific functions
+        master_dem = master_dem.reproject(slave_dem.srs, slave_dem.nx, slave_dem.ny, slave_dem.extent[0], slave_dem.extent[3], slave_dem.xres, slave_dem.yres, dtype=6, nodata=nodata1, interp_type=gdal.GRA_Bilinear,progress=True)
+        #master_dem = DEMRaster(master_dem.ds)  # convert it to a DEMRaster object for later use of specific functions
         dem2coreg=slave_dem.r
+        gt = (slave_dem.extent[0], slave_dem.xres, 0.0, slave_dem.extent[3], 0.0, slave_dem.yres)  # Save GeoTransform for saving
+        
       else:
         sys.exit("Error : grid must be 'master' or 'slave'")
+        
     else:
       dem2coreg = slave_dem.r
+      gt = (master_dem.extent[0], master_dem.xres, 0.0, master_dem.extent[3], 0.0, master_dem.yres)  # Save GeoTransform for saving
 
-    dem2coreg[dem2coreg==nodata] = np.nan
+    if nodata1 is not None: master_dem.r[master_dem.r==nodata1] = np.nan
+    if nodata2 is not None: dem2coreg[dem2coreg==nodata2] = np.nan
 
     ## mask points ##
     if args.maskfile!='none':
         mask = raster.SingleBandRaster(args.maskfile)
         if master_dem.r.shape!=mask.r.shape:
           print "Reproject mask"
-          mask = mask.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata, interp_type=gdal.GRA_NearestNeighbour,progress=True)  # nearest neighbor interpolation
+          mask = mask.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, interp_type=gdal.GRA_NearestNeighbour,progress=True)  # nearest neighbor interpolation
 
         master_dem.r[mask.r>0] = np.nan
+
+    if args.shp!='none':
+      outlines = vect.SingleLayerVector(args.shp)
+      mask = outlines.create_mask(master_dem)
+      master_dem.r[mask>0] = np.nan
 
     ## filter outliers ##
     if args.resmax!='none':
@@ -238,7 +312,7 @@ def coreg_with_master_dem(args):
     ## Display
     if args.plot==True:
       maxval = 3*NMAD_old #np.percentile(np.abs(diff_before[np.isfinite(diff_before)]),90)
-      pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
+      pl.imshow(diff_before,vmin=-maxval,vmax=maxval,cmap='RdYlBu')
       cb=pl.colorbar()
       cb.set_label('Elevation difference (m)')
       pl.show()
@@ -269,7 +343,7 @@ def coreg_with_master_dem(args):
         dh = master_dem.r - dem2coreg
 
         #compute offset
-        east, north, c = horizontal_shift(dh,slope,aspect,args.plot)
+        east, north, c = horizontal_shift(dh,slope,aspect,args.plot,args.min_count)
         print "#%i - Offset in pixels : (%f,%f)" %(i+1,east,north)
         xoff+=east
         yoff+=north
@@ -317,9 +391,10 @@ def coreg_with_master_dem(args):
       diff[master_dem.r<int(args.zmin)] = np.nan
 
     # remove points with slope higher than 40° that are more error-prone
-    slope, aspect = master_dem.compute_slope()
-    diff[slope>=40*np.pi/180] = np.nan
-    diff[np.isnan(slope)] = np.nan
+    # removed until issue with Nan is fixed, see previous commit
+    #slope, aspect = master_dem.compute_slope()
+    #diff[slope>=40*np.pi/180] = np.nan
+    #diff[np.isnan(slope)] = np.nan
 
     # remove outliers
     med = np.median(diff[np.isfinite(diff)])
@@ -327,7 +402,7 @@ def coreg_with_master_dem(args):
     diff[np.abs(diff-med)>3*mad] = np.nan
 
     # estimate a ramp and remove it
-    ramp = deramping(diff,X,Y,plot=args.plot)
+    ramp = deramping(diff,X,Y,d=args.degree,plot=args.plot)
     dem2coreg-=ramp(X,Y)
 
     # save to output file
@@ -335,7 +410,7 @@ def coreg_with_master_dem(args):
       fname, ext = os.path.splitext(args.outfile)
       fname+='_ramp.TIF'
       #fname = WD+'/ramp.out'
-      raster.simple_write_geotiff(fname, ramp(X,Y), master_dem.ds.GetGeoTransform(), wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
+      raster.simple_write_geotiff(fname, ramp(X,Y), gt, wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
       #ramp(X,Y).tofile(fname)
       print "Ramp saved in %s" %fname
       
@@ -353,11 +428,11 @@ def coreg_with_master_dem(args):
         diff_after = dem2coreg - master_dem.r
 
         pl.figure('before')
-        pl.imshow(diff_before,vmin=-maxval,vmax=maxval)
+        pl.imshow(diff_before,vmin=-maxval,vmax=maxval,cmap='RdYlBu')
         cb = pl.colorbar()
         cb.set_label('DEM difference (m)')
         pl.figure('after')
-        pl.imshow(diff_after,vmin=-maxval,vmax=maxval)
+        pl.imshow(diff_after,vmin=-maxval,vmax=maxval,cmap='RdYlBu')
         cb = pl.colorbar()
         cb.set_label('DEM difference (m)')
         #pl.show()
@@ -369,7 +444,7 @@ def coreg_with_master_dem(args):
 
     #Save to output file
     #dtype = master_dem.ds.GetRasterBand(1).DataType
-    raster.simple_write_geotiff(args.outfile, dem2coreg, master_dem.ds.GetGeoTransform(), wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
+    raster.simple_write_geotiff(args.outfile, dem2coreg, gt, wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
 
 
 def read_icesat_elev(is_files,RoI):
@@ -504,7 +579,7 @@ def coreg_with_IceSAT(args):
     for i in xrange(args.niter):
 	
         # compute aspect/dh relationship
-        east, north, c = horizontal_shift(dh,slope_at_IS,aspect_at_IS,plot=args.plot)
+        east, north, c = horizontal_shift(dh,slope_at_IS,aspect_at_IS,plot=args.plot, min_count=args.min_count)
         print "#%i - Offset in pixels : (%f,%f)" %(i+1,east,north)
         xoff+=east
         yoff+=north
@@ -556,7 +631,7 @@ def coreg_with_IceSAT(args):
     dh[np.abs(dh-med)>3*mad] = np.nan
 
     # estimate a ramp and remove it
-    ramp = deramping(dh,xx,yy,plot=False)
+    ramp = deramping(dh,xx,yy,d=args.degree,plot=False)
 
     # compute stats of deramped dh
     tmp = dh-ramp(X,Y) ;
@@ -641,11 +716,14 @@ if __name__=='__main__':
     parser.add_argument('-iter', dest='niter', type=int, default=5, help='int, number of iterations (default: 5)')
     parser.add_argument('-plot', dest='plot', help='Plot processing steps and final results',action='store_true')
     parser.add_argument('-m', dest='maskfile', type=str, default='none', help='str, path to a mask of same size as the master DEM, to filter out non stable areas such as glaciers. Points with mask>0 are masked.  (default is none)')
+    parser.add_argument('-shp', dest='shp', type=str, default='none', help='str, path to a shapefile containing outlines of objects to mask, such as RGI shapefiles (default is none)')
     parser.add_argument('-n1', dest='nodata1', type=str, default='none', help='int, no data value for master DEM if not specified in the raster file (default read in the raster file)')
     parser.add_argument('-n2', dest='nodata2', type=str, default='none', help='int, no data value for slave DEM if not specified in the raster file (default read in the raster file)')
+    parser.add_argument('-min_count', dest='min_count', type=int, default=30, help='int, minimum number of points in each aspect bin to be considered valid (default is 30)')
     parser.add_argument('-zmax', dest='zmax', type=str, default='none', help='float, points with altitude above zmax are masked during the vertical alignment, e.g snow covered areas (default none)')
     parser.add_argument('-zmin', dest='zmin', type=str, default='none', help='float, points with altitude below zmin are masked during the vertical alignment, e.g points on sea (default none)')
     parser.add_argument('-resmax', dest='resmax', type=str, default='none', help='float, maximum value of the residuals, points where |dh|>resmax are considered as outliers and removed (default none)')
+    parser.add_argument('-deg', dest='degree', type=int, default=1, help='int, degree of the polynomial to be fit to residuals and removed (default is 1=tilt)')
     parser.add_argument('-grid', dest='grid', type=str, default='master', help="'master' or 'slave' : common grid to use for the DEMs (default is master DEM grid)")
     parser.add_argument('-save', dest='save', help='Save horizontal offset as a text file and ramp as a GTiff file',action='store_true')
     parser.add_argument('-IS', dest='IS', help='Master DEM are IceSAT data instead of a raster DEM. master_dem must then be a string to the file name or regular expression to several files (use quotes)',action='store_true')

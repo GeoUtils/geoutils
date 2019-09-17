@@ -46,7 +46,7 @@ from osgeo import osr, gdal
 import subprocess
 import xml.etree.ElementTree as etree
 import re
-import mpl_toolkits.basemap.pyproj as pyproj
+import mpl_toolkits.basemap.proj as pyproj
 import matplotlib.pyplot as pl
 from scipy.ndimage.filters import gaussian_filter
 from matplotlib.colors import LightSource
@@ -83,7 +83,7 @@ class DEMRaster(__Raster):
     # Numpy array of band data
     r = None
      
-    def __init__(self,ds_filename,load_data=True,latlon=True,band=1,ref='EGM96'):
+    def __init__(self,ds_filename,load_data=True,latlon=True,band=1,ref='EGM96',downsampl=1):
         """ Construct object with raster from a single band dataset. 
         
         Parameters:
@@ -103,13 +103,13 @@ class DEMRaster(__Raster):
         
         # Load entire image
         if load_data == True:
-            self.r = self.read_single_band(band)
+            self.r = self.read_single_band(band,downsampl=downsampl)
 
         # Or load just a subset region
         elif isinstance(load_data,tuple) or isinstance(load_data,list):
             if len(load_data) == 4:
                 (self.r,self.extent) = self.read_single_band_subset(load_data,
-                                                                    latlon=latlon,extent=True,band=band,update_info=True)
+                                                                    latlon=latlon,extent=True,band=band,update_info=True,downsampl=downsampl)
                 
         elif load_data == False:
             return
@@ -173,8 +173,8 @@ class DEMRaster(__Raster):
         #Compute z gradients
         f1 = np.array([[-1.,0.,1.],[-2.,0.,2.],[-1.,0.,1.]])  # integers will cause issues in convolve if Nans
         f2 = f1.transpose()
-        g1 = signal.convolve(self.r,f1,mode='same',method='direct')  #if selected method='fft', Nans will spread all over
-        g2 = signal.convolve(self.r,f2,mode='same',method='direct')
+        g1 = signal.convolve(self.r,f1,mode='same')
+        g2 = signal.convolve(self.r,f2,mode='same')
 
         #compute slope
         mpm = np.sqrt((g1/distx)**2 + (g2/disty)**2)/8

@@ -535,7 +535,7 @@ Additionally, a number of instances are available in the class.
         self.crop(left,right,bottom,up)
 
     
-    def zonal_statistics(self,rs,operator,subset='all',nodata=None,bands='all'):
+    def zonal_statistics(self,rs,operator,subset='all',nodata=None,bands='all', **kwargs):
         """
         Compute statistics of the data in rasterfile for each feature in self.
         A MultiBandRaster object is accepted, but it won't work with several operators at a time. If several bands are selected, the operator will be applied to all bands together. The different bands will be stored in the 2nd dimension, therefore an operator like np.mean(...,axis=0) will return the average for each band individually. 
@@ -545,7 +545,8 @@ Additionally, a number of instances are available in the class.
         - operator: the aggregation operator to be applied to the data, e.g. np.mean, np.std etc
         - subset : indices of the features to compute (Default is 'all')
         - nodata : specify a no data value (Default will read value from metadata)
-	- bands : bands to be used in case of a MultiBandRaster
+	      - bands : bands to be used in case of a MultiBandRaster
+        **kwargs will be passed to operator
         """
 
         # Read raster
@@ -596,22 +597,53 @@ Additionally, a number of instances are available in the class.
         # output values to be stored in this list
         outputs = []
 
-        if nbands==1:
+
+        for k in range(len(subset)):
+
+            # Progressbar
+            gdal.TermProgress_nocb(float(k)/(len(subset)))
+
+            # Read feature geometry and reproject to raster projection
+            feat = self.features[subset[k]].Clone()  # clone needed to not modify input layer
+            sh = Shape(feat,load_data=False)
+            sh.geom.Transform(coordTrans)
+            sh.read()
+
+            # Read feature extent and compare to rater extent. Features not entirely inside raster extent are excluded
+            xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
+            if ((xmax>xr) or (xmin<xl) or (ymin<yd) or (ymax>yu)):
+                outputs.append(np.nan)
+                continue
             
-            for k in range(len(subset)):
+            # Look only for points within the box of the feature
+            i1, j1 = img.coord_to_px(xmin,ymin)
+            i2, j2 = img.coord_to_px(xmax,ymax)
+            jinds = np.arange(j2,j1+1,dtype='int64')
+            iinds = np.arange(i1,i2+1,dtype='int64')
+            ii, jj = np.meshgrid(iinds,jinds)
+            X, Y = img.coordinates(Xpixels=ii,Ypixels=jj)
 
-                # Progressbar
-                gdal.TermProgress_nocb(float(k)/(len(subset)-1))
+            # Select data within the feature
+            inside = geo.points_inside_polygon(X,Y,sh.vertices,skip_holes=False)
+            inside_i = ii[inside==True]
+            inside_j = jj[inside==True]
+            data = img.r[inside_j,inside_i]
 
-                # Read feature geometry and reproject to raster projection
-                feat = self.features[subset[k]].Clone()  # clone needed to not modify input layer
-                sh = Shape(feat,load_data=False)
-                sh.geom.Transform(coordTrans)
-                sh.read()
+            # Filter no data values
+            data = data[~np.isnan(data)]
+            if nodata!='':
+                data = data[data!=nodata]
 
-                # Read feature extent and compare to raster extent. Features not entirely inside raster extent are excluded
-                xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
-                if ((xmax>xr) or (xmin<xl) or (ymin<yd) or (ymax>yu)):
+            # Compute statistics
+            if len(data)>0:
+                if callable(operator):  # case only 1 operator
+                    outputs.append(operator(data, **kwargs))
+                elif (isinstance(operator,list) or isinstance(operator,tuple)): # case list of operators
+                    output = [op(data, **kwargs) for op in operator]
+                    outputs.append(output)
+                    
+            else:
+                if callable(operator):
                     outputs.append(np.nan)
                     continue
 

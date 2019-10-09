@@ -172,7 +172,7 @@ def deramping(diff,X,Y,d=1,plot=False):
       return None
     else:
       # k is degree considered, j is power of Y varying from 0 to k, k-j is power of X varying from k to 0, k*(k+1)/2 + j is index of the coefficient
-      return np.sum([p[k*(k+1)/2+j]*X**(k-j)*Y**j for k in xrange(d+1) for j in xrange(k+1)],axis=0)
+      return np.sum([p[k*(k+1)//2+j]*X**(k-j)*Y**j for k in range(d+1) for j in range(k+1)],axis=0)
     
 
   def residuals(p,z,X,Y,d):
@@ -190,8 +190,8 @@ def deramping(diff,X,Y,d=1,plot=False):
     x = x[inds]
     y = y[inds]
     z = z[inds]
-    
-  p0 = np.zeros((d+1)*(d+2)/2)   # inital guess for the polynomial coeff
+
+  p0 = np.zeros((d+1)*(d+2)//2)   # inital guess for the polynomial coeff
   plsq = leastsq(residuals, p0, args = (z,x,y,d),full_output = 1)
   zfit = poly2D(X,Y,plsq[0],d)
   
@@ -254,13 +254,13 @@ def coreg_with_master_dem(args):
     if master_dem.r.shape!=slave_dem.r.shape:
       if args.grid=='master':
         
-        print "Reproject slave DEM"
+        print("Reproject slave DEM")
         dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata2, interp_type=gdal.GRA_Bilinear,progress=True).r
         gt = (master_dem.extent[0], master_dem.xres, 0.0, master_dem.extent[3], 0.0, master_dem.yres)  # Save GeoTransform for saving
         
       elif args.grid=='slave':
         
-        print "Reproject master DEM"
+        print("Reproject master DEM")
         master_dem = master_dem.reproject(slave_dem.srs, slave_dem.nx, slave_dem.ny, slave_dem.extent[0], slave_dem.extent[3], slave_dem.xres, slave_dem.yres, dtype=6, nodata=nodata1, interp_type=gdal.GRA_Bilinear,progress=True)
         #master_dem = DEMRaster(master_dem.ds)  # convert it to a DEMRaster object for later use of specific functions
         dem2coreg=slave_dem.r
@@ -280,7 +280,7 @@ def coreg_with_master_dem(args):
     if args.maskfile!='none':
         mask = raster.SingleBandRaster(args.maskfile)
         if master_dem.r.shape!=mask.r.shape:
-          print "Reproject mask"
+          print("Reproject mask")
           mask = mask.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, interp_type=gdal.GRA_NearestNeighbour,progress=True)  # nearest neighbor interpolation
 
         master_dem.r[mask.r>0] = np.nan
@@ -306,8 +306,8 @@ def coreg_with_master_dem(args):
     ## Print out some statistics
     median = np.median(diff_before[np.isfinite(diff_before)])
     NMAD_old = 1.4826*np.median(np.abs(diff_before[np.isfinite(diff_before)]-median))
-    print "Statistics on initial dh"
-    print "Median : %f, NMAD : %f" %(median,NMAD_old)
+    print("Statistics on initial dh")
+    print("Median : %f, NMAD : %f" %(median,NMAD_old))
 
     ## Display
     if args.plot==True:
@@ -332,9 +332,9 @@ def coreg_with_master_dem(args):
 
 
     ## Iterations to estimate DEMs shift
-    print "Iteratively estimate DEMs shift"
+    print("Iteratively estimate DEMs shift")
 
-    for i in xrange(args.niter):
+    for i in range(args.niter):
 
 	# remove bias
         dem2coreg-=median
@@ -344,7 +344,7 @@ def coreg_with_master_dem(args):
 
         #compute offset
         east, north, c = horizontal_shift(dh,slope,aspect,args.plot,args.min_count)
-        print "#%i - Offset in pixels : (%f,%f)" %(i+1,east,north)
+        print("#%i - Offset in pixels : (%f,%f)" %(i+1,east,north))
         xoff+=east
         yoff+=north
     
@@ -364,10 +364,10 @@ def coreg_with_master_dem(args):
         NMAD_new = 1.4826*np.median(np.abs(diff-np.median(diff)))
         median = np.median(diff)
 
-        print "Median : %.2f, NMAD = %.2f, Gain : %.2f%%" %(median,NMAD_new,(NMAD_new-NMAD_old)/NMAD_old*100)
+        print("Median : %.2f, NMAD = %.2f, Gain : %.2f%%" %(median,NMAD_new,(NMAD_new-NMAD_old)/NMAD_old*100))
         NMAD_old = NMAD_new
 
-    print "Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff)
+    print("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
     
     if args.save==True:
       fname, ext = os.path.splitext(args.outfile)
@@ -376,10 +376,10 @@ def coreg_with_master_dem(args):
       f.write("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
       f.write("Final NMAD : %f" %NMAD_new)
       f.close()
-      print "Offset saved in %s" %fname
+      print("Offset saved in %s" %fname)
       
     ### Deramping ###
-    print "Deramping"
+    print("Deramping")
     diff = dem2coreg-master_dem.r
     
     # remove points above altitude threshold (snow covered areas) 
@@ -412,15 +412,15 @@ def coreg_with_master_dem(args):
       #fname = WD+'/ramp.out'
       raster.simple_write_geotiff(fname, ramp(X,Y), gt, wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
       #ramp(X,Y).tofile(fname)
-      print "Ramp saved in %s" %fname
+      print("Ramp saved in %s" %fname)
       
     # print some statistics
     diff = dem2coreg-master_dem.r
     diff = diff[np.isfinite(diff)]
     median = np.median(diff)
     NMAD = 1.4826*np.median(np.abs(diff-median))
-    print "Final DEM"
-    print "Median : %.2f, NMAD = %.2f" %(median,NMAD)
+    print("Final DEM")
+    print("Median : %.2f, NMAD = %.2f" %(median,NMAD))
 
 
     #Display results
@@ -458,7 +458,7 @@ def read_icesat_elev(is_files,RoI):
     import h5py
 
     ## Read Icesat data
-    print "read Icesat data"
+    print("read Icesat data")
     filelist = glob(is_files)
     filelist.sort()
 
@@ -467,7 +467,7 @@ def read_icesat_elev(is_files,RoI):
     all_elev = []
 
     for f in filelist:
-        #print f
+        #print(f)
         ds=h5py.File(f,'r')
         lons = np.array(ds['Data_40HZ/Geolocation/d_lon'])
         lats = np.array(ds['Data_40HZ/Geolocation/d_lat'])
@@ -516,7 +516,7 @@ def coreg_with_IceSAT(args):
     ## mask points ##
     mask = raster.SingleBandRaster(args.maskfile)
     if dem2coreg.r.shape!=mask.r.shape:
-          print "Reproject mask"
+          print("Reproject mask")
           mask = mask.reproject(dem2coreg.srs, dem2coreg.nx, dem2coreg.ny, dem2coreg.extent[0], dem2coreg.extent[3], dem2coreg.xres, dem2coreg.yres, dtype=6, nodata=nodata, interp_type=1,progress=True)
 
     dem2coreg.r[mask.r>0] = np.nan
@@ -539,7 +539,7 @@ def coreg_with_IceSAT(args):
         pl.show()
 
     ## compute slave DEM slope at Icesat points ##
-    print "Compute slope and aspect"
+    print("Compute slope and aspect")
     g2, g1 = np.gradient(dem2coreg.r)
     distx = np.abs(dem2coreg.xres)
     disty = np.abs(dem2coreg.yres)
@@ -563,24 +563,24 @@ def coreg_with_IceSAT(args):
     ## Print out some statistics
     median = np.median(dh[np.isfinite(dh)])
     NMAD_old = 1.4826*np.median(np.abs(dh[np.isfinite(dh)]-median))
-    print "Statistics on initial dh"
-    print "Median : %f, NMAD : %f" %(median,NMAD_old)
+    print("Statistics on initial dh")
+    print("Median : %f, NMAD : %f" %(median,NMAD_old))
 
 
 
     ## Iterations to estimate DEMs shift
-    print "Iteratively estimate DEMs shift"
+    print("Iteratively estimate DEMs shift")
 
     slave_elev=dem2coreg.interp(all_lons,all_lats,latlon=True)
     dh = all_elev - slave_elev
     dh[slave_elev==0] = np.nan
     xoff, yoff = 0,0 
 
-    for i in xrange(args.niter):
+    for i in range(args.niter):
 	
         # compute aspect/dh relationship
         east, north, c = horizontal_shift(dh,slope_at_IS,aspect_at_IS,plot=args.plot, min_count=args.min_count)
-        print "#%i - Offset in pixels : (%f,%f)" %(i+1,east,north)
+        print("#%i - Offset in pixels : (%f,%f)" %(i+1,east,north))
         xoff+=east
         yoff+=north
 
@@ -593,10 +593,10 @@ def coreg_with_IceSAT(args):
         median = np.median(dh[np.isfinite(dh)])
         NMAD_new = 1.4826*np.median(np.abs(dh[np.isfinite(dh)]-median))
 
-        print "Median : %.2f, NMAD = %.2f, Gain : %.2f%%" %(median,NMAD_new,(NMAD_new-NMAD_old)/NMAD_old*100)
+        print("Median : %.2f, NMAD = %.2f, Gain : %.2f%%" %(median,NMAD_new,(NMAD_new-NMAD_old)/NMAD_old*100))
         NMAD_old = NMAD_new
 
-    print "Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff)
+    print("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
 
     if args.save==True:
       fname, ext = os.path.splitext(args.outfile)
@@ -605,11 +605,11 @@ def coreg_with_IceSAT(args):
       f.write("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
       f.write("Final NMAD : %f" %NMAD_new)
       f.close()
-      print "Offset saved in %s" %fname
+      print("Offset saved in %s" %fname)
       
 
     ### Deramping ###
-    print "Deramping"
+    print("Deramping")
     
     # remove points above altitude threshold (snow covered areas)
     #if args.zmax!='none':
@@ -645,7 +645,7 @@ def coreg_with_IceSAT(args):
           f.write("Median after deramping : (%f)" %(median))
           f.write("NMAD after deramping : %f" %NMAD_new)
           f.close()
-          print "Post-deramping stats saved in %s" %fname
+          print("Post-deramping stats saved in %s" %fname)
         
     # save to output file
     if args.save==True:
@@ -654,7 +654,7 @@ def coreg_with_IceSAT(args):
       #fname = WD+'/ramp.out'
       raster.simple_write_geotiff(fname, ramp(X,Y), dem2coreg.ds.GetGeoTransform(), wkt=dem2coreg.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
       #ramp(X,Y).tofile(fname)
-      print "Ramp saved in %s" %fname
+      print("Ramp saved in %s" %fname)
       
     if args.plot==True:
         pl.figure('ramp')
@@ -673,7 +673,7 @@ def coreg_with_IceSAT(args):
     
     ### Interpolate the slave DEM to the new grid ###
 
-    print "Interpolate DEM to new grid"
+    print("Interpolate DEM to new grid")
 
     # fill NaN values for interpolation
     nanval = np.isnan(dem2coreg_save)

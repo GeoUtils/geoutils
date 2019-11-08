@@ -52,8 +52,8 @@ from scipy.ndimage.filters import gaussian_filter
 from matplotlib.colors import LightSource
 
 from georaster import __Raster
-import geometry as geo
-import EGM96
+import geoutils.geometry as geo
+from geoutils import EGM96
 
 # By default, GDAL does not raise exceptions - enable them
 # See http://trac.osgeo.org/gdal/wiki/PythonGotchas

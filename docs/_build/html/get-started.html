@@ -1,0 +1,207 @@
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>Getting Started &#8212; GeoUtils 0.5 documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="_static/language_data.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="getting-started">
+<span id="get-started"></span><h1>Getting Started<a class="headerlink" href="#getting-started" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="display-a-raster-image">
+<h2>Display a raster image<a class="headerlink" href="#display-a-raster-image" title="Permalink to this headline">¶</a></h2>
+<dl class="simple">
+<dt>::</dt><dd><p>plot_geo_image.py data/LE71400412000304SGS00_B4_crop.TIF</p>
+</dd>
+<dt>Choose a different colorbar, remove colorbar::</dt><dd><p>plot_geo_image.py LE71400412000304SGS00_B4_crop.TIF -cmap gray -nocb</p>
+</dd>
+<dt>Add some labelling::</dt><dd><p>plot_geo_image.py LE71400412000304SGS00_B4_crop.TIF -clabel ‘Image intensity’ -title ‘Landsat image of the Everest region’ -cmap gray</p>
+</dd>
+<dt>Change figure size and save to file::</dt><dd><p>plot_geo_image.py LE71400412000304SGS00_B4_crop.TIF -cmap gray -figsize 12,8 -dpi 150 -save temp.png</p>
+</dd>
+</dl>
+</div>
+<div class="section" id="vector-files-handling-within-python">
+<h2>Vector files handling within Python<a class="headerlink" href="#vector-files-handling-within-python" title="Permalink to this headline">¶</a></h2>
+<dl class="simple">
+<dt>::</dt><dd><p>from geoutils import geovector as vect</p>
+</dd>
+<dt>Read a vector file::</dt><dd><p>outlines = vect.SingleLayerVector(‘data/glacier_outlines.shp’)</p>
+</dd>
+</dl>
+<p>At this stage, only the attributes are read, not the individual features. Metadata are saved as attributes, e.g.:</p>
+<ul class="simple">
+<li><dl class="simple">
+<dt>extent::</dt><dd><p>outlines.extent</p>
+</dd>
+</dl>
+</li>
+<li><p>osr.SpatialReference::
+outlines.srs</p></li>
+<li><p>number of features selected::
+outlines.FeatureCount()</p></li>
+</ul>
+<dl class="simple">
+<dt>Actually read the features:::</dt><dd><p>outlines.read()</p>
+</dd>
+</dl>
+<p>The features are then stored as a list in outlines.features.</p>
+<dl class="simple">
+<dt>Display the layer::</dt><dd><p>import matplotlib.pyplot as plt
+outlines.draw()
+plt.show()</p>
+</dd>
+<dt>Display only the contours::</dt><dd><p>outlines.draw(facecolor=’none’)
+plt.show()</p>
+</dd>
+<dt>Display only a subset, e.g. glaciers larger than 5 km2::</dt><dd><p>import numpy as np
+subset = np.where(outlines.fields.values[‘Area’]&gt;5)
+outlines.draw(facecolor=’none’,subset=subset)
+plt.show()</p>
+</dd>
+<dt>A specific outline::</dt><dd><p>outlines.draw(facecolor=’none’,subset=np.where(outlines.fields.values[‘RGIId’]==’RGI50-15.09991’))
+plt.show()</p>
+</dd>
+</dl>
+<p>## Crop the layer ##</p>
+<p># With specified coordinates
+outlines.crop(86.75,86.93,27.9,28.05)
+outlines.read()</p>
+<p># From an external raster
+outlines.crop2raster(‘data/LE71400412000304SGS00_B4_crop.TIF’)
+outlines.read()</p>
+<p>## Reproject layer ##
+import georaster as raster
+img = raster.SingleBandRaster(‘data/LE71400412000304SGS00_B4_crop.TIF’)
+outlines_proj = outlines.reproject(img.srs)
+outlines_proj.read()</p>
+<p># Display on top of the raster
+plt.imshow(img.r,cmap=’gray’,extent=img.extent)
+outlines_proj.draw(facecolor=’none’,edgecolor=’r’)
+plt.show()</p>
+<p>## Save the layer to an ESRI shapefile ##
+# Some issues with SetField for some fields, need to figure out why…</p>
+<p>vect.save_shapefile(‘temp.shp’,outlines_proj)</p>
+<p>## Create a mask ##</p>
+<p># mask inside/outside
+ice_mask = outlines.create_mask(img)  # ice_mask=0 outside, 255 inside</p>
+<p># Mask by feature attributes
+area = outlines.create_mask_attr(img,’Area’)
+plt.imshow(area)
+plt.colorbar()
+plt.show()</p>
+<p>## Clip a raster to a vector layer ##</p>
+<p># Cropping but no masking outside the mask
+feat=11
+clipped_data = outlines.clip_raster(‘data/LE71400412000304SGS00_B4_crop.TIF’,’none’,feature=feat)
+clipped_data = raster.SingleBandRaster(clipped_data)
+plt.imshow(clipped_data.r,cmap=’gray’,extent=clipped_data.extent)
+outlines_proj.draw(facecolor=’none’,edgecolor=’w’,subset=feat)
+plt.show()</p>
+<p># Masking (bugs, not only selected feature displayed + no data = 241…)
+clipped_data = outlines.clip_raster(‘data/LE71400412000304SGS00_B4_crop.TIF’,’none’,feature=feat,masking=True)
+clipped_data = raster.SingleBandRaster(clipped_data)
+plt.imshow(clipped_data.r,cmap=’gray’,extent=clipped_data.extent)
+outlines_proj.draw(facecolor=’none’,edgecolor=’w’,subset=feat)
+plt.show()</p>
+<p>### Zonal statistics ###</p>
+<p># caculate the mean of the raster inside the features
+mean = outlines.zonal_statistics(img,np.mean)</p>
+<p># display results
+outlines.fields.values[‘mean’] = mean
+outlines.draw_by_attr(‘mean’,cmap=plt.get_cmap(‘gray’))
+plt.show()</p>
+<p>### extract along profiles ###</p>
+<p>cfl = vect.SingleLayerVector(‘data/centerlines.shp’)
+cfl.read()</p>
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">GeoUtils</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, Andrew Tedstone, Amaury Dehecq.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.2.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/get-started.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

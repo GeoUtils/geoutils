@@ -14,7 +14,7 @@ This package offers Python classes and functions to work with both geospatial ra
    :maxdepth: 1
 
    get-started
-   
+   api
 
 Indices and tables
 ==================

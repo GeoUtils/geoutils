@@ -323,6 +323,13 @@ Additionally, a number of instances are available in the class.
     def reproject(self,target_srs):
         """
         Return a new SingleLayerVector object with features reprojected according to target_srs.
+
+        :param target_srs: Spatial Reference System to reproject to
+        :type target_srs: srs.SpatialReference
+
+        :returns: A SingleLayerVector object containing the
+            reprojected layer (in memory - not saved to file system)
+        :rtype: geovector.SingleLayerVector       
         """
         # create the CoordinateTransformation
         coordTrans = osr.CoordinateTransformation(self.srs, target_srs)

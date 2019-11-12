@@ -12,7 +12,6 @@ This package offers Python classes and functions to work with both geospatial ra
 
 .. toctree::
    :maxdepth: 1
-   :caption: Contents:
 
    get-started
    

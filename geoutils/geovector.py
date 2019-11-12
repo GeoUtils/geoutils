@@ -131,48 +131,49 @@ def multipoly2poly(in_lyr, out_lyr):
 
 class SingleLayerVector:
 
-    def __init__(self,ds_filename,load_data=True,latlon=True,band=1):
-        """ Construct object from vector file with a single layer. 
+    def __init__(self,ds_filename,load_data=True):
+        """ Construct an object from a vector file with a single layer. 
+        The class works as a wrapper to the OGR API. A vector dataset can be loaded
+        into a class without needing to load the actual data, which is useful
+        for querying geo-referencing information without memory overheads.
         
-        Parameters:
-            ds_filename : filename of the dataset to import
+        :param ds_filename: filename of the dataset to import
+        :type ds_filename: str
+        :param load_data: set to True to load the data in memory
+        :type load_data: boolean
+        
+        Attributes:
+        ds     : the OGR handle to the dataset, which provides access to 
+                 all OGR functions, e.g. GetLayer, GetLayerCount...
+                 More information on API:
+                 http://gdal.org/python/osgeo.ogr.DataSource-class.html
 
-       The class works as a wrapper to the OGR API. A vector dataset can be loaded
-into a class without needing to load the actual data, which is useful
-for querying geo-referencing information without memory overheads.
+        srs    : an OGR Spatial Reference object representation of the 
+                 dataset.
+                 More information on API:
+                 http://www.gdal.org/classOGRSpatialReference.html
 
-The following attributes are available :
+        proj   : a pyproj coordinate conversion function between the 
+                 dataset coordinate system and lat/lon.
 
-    class.ds    :   the OGR handle to the dataset, which provides access to 
-                    all OGR functions, e.g. GetLayer, GetLayerCount...
-                        More information on API:
-                        http://gdal.org/python/osgeo.ogr.DataSource-class.html
+        extent : tuple of the corners of the dataset in native coordinate
+                 system, as (left,right,bottom,top).
 
-    class.srs   :   an OGR Spatial Reference object representation of the 
-                    dataset.
-                        More information on API:
-                        http://www.gdal.org/classOGRSpatialReference.html
+        layer  : an OGR Layer object, 
+                 see http://gdal.org/python/osgeo.ogr.Layer-class.html
 
-    class.proj  :   a pyproj coordinate conversion function between the 
-                    dataset coordinate system and lat/lon.
-
-    class.extent :  tuple of the corners of the dataset in native coordinate
-                    system, as (left,right,bottom,top).
-
-    class.extent :  tuple of the corners of the dataset in native coordinate
-                    system, as (left,right,bottom,top).
-
-    class.layer : an OGR Layer object, see http://gdal.org/python/osgeo.ogr.Layer-class.html
-
-    class.fields : an OGR field, i.e attributes to each feature. 
-                   - fields.name contains the name of the fields
-                   - fields.dtype contains the Numpy.dtype of the fields
-                   - fields.value contains the value of the fields in form of a dictionary
-
-Additionally, a number of instances are available in the class. 
+        fields : an OGR field, i.e attributes to each feature. 
+                 - fields.name contains the name of the fields
+                 - fields.dtype contains the Numpy.dtype of the fields
+                 - fields.value contains the value of the fields in form of a dictionary
+        
+        Additionally, a number of instances are available in the class. 
         """
 
-        self._load_ds(ds_filename)     
+        self._load_ds(ds_filename)
+        
+        if load_data==True:
+            self.read()
 
 
 

@@ -168,7 +168,7 @@ class SingleLayerVector:
     Additionally, a number of instances are available in the class. 
     """
         
-    def __init__(self,ds_filename,load_data=True):
+    def __init__(self,ds_filename,load_data=False):
 
         self._load_ds(ds_filename)
         

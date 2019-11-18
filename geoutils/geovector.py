@@ -732,12 +732,13 @@ Additionally, a number of instances are available in the class.
 
 
     
-    def create_mask(self,raster='none',srs='none',xres='none',yres='none',extent='none'):
+    def create_mask(self,raster='none',srs='none',xres='none',yres='none',extent='none',burn_value=255):
         """
         Return a mask (array with dtype Byte) of the polygons in self.
         The spatial reference system of the mask can be set either :
         - by giving a georaster.__Raster object as input
         - by specifying the reference system srs, the raster pixel size (xres,yres) and the raster extent
+        - burn_value: float, the value to be burnt inside the polygons (Default is 255)
         """
 
         if raster=='none':
@@ -771,7 +772,7 @@ Additionally, a number of instances are available in the class.
         target_ds.SetProjection(srs.ExportToWkt())
 
         # Rasterize
-        err = gdal.RasterizeLayer(target_ds, [1], self.layer,burn_values=[255])
+        err = gdal.RasterizeLayer(target_ds, [1], self.layer,burn_values=[burn_value])
         if err != 0:
             raise Exception("error rasterizing layer: %s" % err)
 

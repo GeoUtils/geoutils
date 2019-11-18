@@ -1,0 +1,7 @@
+name: geovector_conda
+dependencies:
+  - python=3.7
+  - georaster
+  - matplotlib
+channels:
+  - conda-forge

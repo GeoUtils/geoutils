@@ -379,31 +379,32 @@ def coreg_with_master_dem(args):
       print("Offset saved in %s" %fname)
       
     ### Deramping ###
-    print("Deramping")
-    diff = dem2coreg-master_dem.r
-    
-    # remove points above altitude threshold (snow covered areas) 
-    if args.zmax!='none':
-      diff[master_dem.r>int(args.zmax)] = np.nan
+    if args.degree>=0:
+        print("Deramping")
+        diff = dem2coreg-master_dem.r
 
-    # remove points below altitude threshold (e.g sea ice)
-    if args.zmin!='none':
-      diff[master_dem.r<int(args.zmin)] = np.nan
+        # remove points above altitude threshold (snow covered areas) 
+        if args.zmax!='none':
+          diff[master_dem.r>int(args.zmax)] = np.nan
 
-    # remove points with slope higher than 40° that are more error-prone
-    # removed until issue with Nan is fixed, see previous commit
-    #slope, aspect = master_dem.compute_slope()
-    #diff[slope>=40*np.pi/180] = np.nan
-    #diff[np.isnan(slope)] = np.nan
+        # remove points below altitude threshold (e.g sea ice)
+        if args.zmin!='none':
+          diff[master_dem.r<int(args.zmin)] = np.nan
 
-    # remove outliers
-    med = np.median(diff[np.isfinite(diff)])
-    mad=1.4826*np.median(np.abs(diff[np.isfinite(diff)]-med))
-    diff[np.abs(diff-med)>3*mad] = np.nan
+        # remove points with slope higher than 40° that are more error-prone
+        # removed until issue with Nan is fixed, see previous commit
+        #slope, aspect = master_dem.compute_slope()
+        #diff[slope>=40*np.pi/180] = np.nan
+        #diff[np.isnan(slope)] = np.nan
 
-    # estimate a ramp and remove it
-    ramp = deramping(diff,X,Y,d=args.degree,plot=args.plot)
-    dem2coreg-=ramp(X,Y)
+        # remove outliers
+        med = np.median(diff[np.isfinite(diff)])
+        mad=1.4826*np.median(np.abs(diff[np.isfinite(diff)]-med))
+        diff[np.abs(diff-med)>3*mad] = np.nan
+
+        # estimate a ramp and remove it
+        ramp = deramping(diff,X,Y,d=args.degree,plot=args.plot)
+        dem2coreg-=ramp(X,Y)
 
     # save to output file
     if args.save==True:
@@ -723,7 +724,7 @@ if __name__=='__main__':
     parser.add_argument('-zmax', dest='zmax', type=str, default='none', help='float, points with altitude above zmax are masked during the vertical alignment, e.g snow covered areas (default none)')
     parser.add_argument('-zmin', dest='zmin', type=str, default='none', help='float, points with altitude below zmin are masked during the vertical alignment, e.g points on sea (default none)')
     parser.add_argument('-resmax', dest='resmax', type=str, default='none', help='float, maximum value of the residuals, points where |dh|>resmax are considered as outliers and removed (default none)')
-    parser.add_argument('-deg', dest='degree', type=int, default=1, help='int, degree of the polynomial to be fit to residuals and removed (default is 1=tilt)')
+    parser.add_argument('-deg', dest='degree', type=int, default=1, help='int, degree of the polynomial to be fit to residuals and removed. Set to <0 to disable. (default is 1=tilt)')
     parser.add_argument('-grid', dest='grid', type=str, default='master', help="'master' or 'slave' : common grid to use for the DEMs (default is master DEM grid)")
     parser.add_argument('-save', dest='save', help='Save horizontal offset as a text file and ramp as a GTiff file',action='store_true')
     parser.add_argument('-IS', dest='IS', help='Master DEM are IceSAT data instead of a raster DEM. master_dem must then be a string to the file name or regular expression to several files (use quotes)',action='store_true')

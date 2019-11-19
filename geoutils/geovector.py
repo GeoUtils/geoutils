@@ -222,13 +222,15 @@ class SingleLayerVector:
             fields._size.append(layerDefinition.GetFieldDefn(i).GetWidth())
 
         # Convert types to Numpy dtypes
-        # see http://www.gdal.org/ogr__core_8h.html#a787194bea637faf12d61643124a7c9fc
+        # All OGR types can be found by typing
+        # import ogr
+        # print([ d for d in dir(ogr) if d[:3]=='OFT' ])
         # IntegerList, RealList, StringList, Integer64List not implemented yet.
-        OGR2np = {'Integer':'i4','Real':'d','String':'S','Binary':'S','Date':'S','Time':'S','DateTime':'S','Integer64':'i8'}
+        OGR2np = {'Integer':'i4','Real':'d','String':'U','Binary':'U','Date':'U','Time':'U','DateTime':'U','Integer64':'i8'}
 
         for k in range(len(fields.dtype)):
             dtype = OGR2np[fields.dtype[k]]
-            if dtype=='S':
+            if dtype=='U':
                 dtype+=str(fields._size[k])
             fields.dtype[k] = dtype
 
@@ -275,6 +277,7 @@ class SingleLayerVector:
                 #read each field associated to the feature
                 for f in self.fields.name:
                     self.fields.values[f][i] = feat.GetField(f)
+
         else:
             k=0
             for i in subset:
@@ -1311,7 +1314,7 @@ class Shape():
 
 # Data type conversion from numpy to OGR
 np2OGR = {'i':ogr.OFTInteger,'l':ogr.OFTInteger64,'d':ogr.OFTReal, \
-          'S':ogr.OFTString,'i8':ogr.OFTInteger64}
+          'S':ogr.OFTString,'U':ogr.OFTString,'i8':ogr.OFTInteger64}
 
 def save_shapefile(filename,gv_obj, format='ESRI Shapefile'):
     """

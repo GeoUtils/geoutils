@@ -368,16 +368,7 @@ def coreg_with_master_dem(args):
         NMAD_old = NMAD_new
 
     print("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
-    
-    if args.save==True:
-      fname, ext = os.path.splitext(args.outfile)
-      fname+='_shift.txt'
-      f = open(fname,'w')
-      f.write("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
-      f.write("Final NMAD : %f" %NMAD_new)
-      f.close()
-      print("Offset saved in %s" %fname)
-      
+          
     ### Deramping ###
     if args.degree>=0:
         print("Deramping")
@@ -404,16 +395,31 @@ def coreg_with_master_dem(args):
 
         # estimate a ramp and remove it
         ramp = deramping(diff,X,Y,d=args.degree,plot=args.plot)
-        dem2coreg-=ramp(X,Y)
+        vshift = ramp(X,Y)
+        dem2coreg-=vshift  #ramp(X,Y)
 
     # save to output file
     if args.save==True:
       fname, ext = os.path.splitext(args.outfile)
-      fname+='_ramp.TIF'
-      #fname = WD+'/ramp.out'
-      raster.simple_write_geotiff(fname, ramp(X,Y), gt, wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
-      #ramp(X,Y).tofile(fname)
-      print("Ramp saved in %s" %fname)
+      fname+='_shift.txt'
+      f = open(fname,'w')
+      f.write("Final offset: east (pixels), north (pixels), median up (m)\n")
+      if args.degree>=0:
+        vshift_med = np.median(vshift[nanval_new==0])
+      else:
+        vshift_med = np.nan
+      f.write("%g, %g, %g\n" %(xoff, yoff, vshift_med))
+      f.write("Final NMAD (m) :\n%f" %NMAD_new)
+      f.close()
+      print("Offset saved in %s" %fname)
+
+    # Save the ramp as a GeoTiff
+    # if args.save==True:
+    #   fname, ext = os.path.splitext(args.outfile)
+    #   fname+='_ramp.TIF'
+    #   raster.simple_write_geotiff(fname, ramp(X,Y), gt, wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
+    #   #ramp(X,Y).tofile(fname)
+    #   print("Ramp saved in %s" %fname)
       
     # print some statistics
     diff = dem2coreg-master_dem.r
@@ -726,7 +732,7 @@ if __name__=='__main__':
     parser.add_argument('-resmax', dest='resmax', type=str, default='none', help='float, maximum value of the residuals, points where |dh|>resmax are considered as outliers and removed (default none)')
     parser.add_argument('-deg', dest='degree', type=int, default=1, help='int, degree of the polynomial to be fit to residuals and removed. Set to <0 to disable. (default is 1=tilt)')
     parser.add_argument('-grid', dest='grid', type=str, default='master', help="'master' or 'slave' : common grid to use for the DEMs (default is master DEM grid)")
-    parser.add_argument('-save', dest='save', help='Save horizontal offset as a text file and ramp as a GTiff file',action='store_true')
+    parser.add_argument('-save', dest='save', help='Save horizontal and median vertical offset in a text file',action='store_true')
     parser.add_argument('-IS', dest='IS', help='Master DEM are IceSAT data instead of a raster DEM. master_dem must then be a string to the file name or regular expression to several files (use quotes)',action='store_true')
 
 

@@ -743,7 +743,7 @@ class SingleLayerVector:
 
 
     
-    def create_mask(self,raster='none',srs='none',xres='none',yres='none',extent='none'):
+    def create_mask(self,rs='none',srs='none',xres='none',yres='none',extent='none'):
         """
         Return a mask (array with dtype Byte) of the polygons in self.
         The spatial reference system of the mask can be set either :
@@ -751,7 +751,7 @@ class SingleLayerVector:
         - by specifying the reference system srs, the raster pixel size (xres,yres) and the raster extent
         """
 
-        if raster=='none':
+        if rs=='none':
             x_min, x_max, y_min, y_max = extent
             ysize = abs((x_max-x_min)/xres)
             xsize = abs((y_max-y_min)/yres)
@@ -764,12 +764,12 @@ class SingleLayerVector:
                 ysize=int(ysize)
         else:
             # Open the raster file
-            xsize = raster.ny
-            ysize = raster.nx
-            x_min, x_max, y_min, y_max = raster.extent
-            xres = raster.xres
-            yres = raster.yres
-            srs = raster.srs
+            xsize = rs.ny
+            ysize = rs.nx
+            x_min, x_max, y_min, y_max = rs.extent
+            xres = rs.xres
+            yres = rs.yres
+            srs = rs.srs
 
         # Create memory target raster
         target_ds = gdal.GetDriverByName('MEM').Create('', ysize, xsize, 1, gdal.GDT_Byte)
@@ -793,26 +793,26 @@ class SingleLayerVector:
         return datamask
 
 
-    def create_mask_attr(self,raster,attr,from_ds=True):
+    def create_mask_attr(self,rs,attr,from_ds=True):
         """
         Return a raster (Float32) containing the values of attr for each polygon in self, in the Spatial Reference and resolution of raster.
 	If from_ds is set to True, will use only the values saved on disk, otherwise will use the values from the georaster object.
         """
 
         # Open the raster file
-        xsize, ysize = raster.r.shape
-        x_min, x_max, y_min, y_max = raster.extent
+        xsize, ysize = rs.r.shape
+        x_min, x_max, y_min, y_max = rs.extent
     
 
         # Create memory target raster
         target_ds = gdal.GetDriverByName('MEM').Create('', ysize, xsize, 1, gdal.GDT_Float32)
         target_ds.SetGeoTransform((
-                x_min, raster.xres, 0,
-                y_max, 0, raster.yres,
+                x_min, rs.xres, 0,
+                y_max, 0, rs.yres,
                 ))
 
         # Make the target raster have the same projection as the source raster
-        target_ds.SetProjection(raster.srs.ExportToWkt())
+        target_ds.SetProjection(rs.srs.ExportToWkt())
 
         ## Loop on features ##
 

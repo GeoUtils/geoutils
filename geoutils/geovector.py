@@ -222,13 +222,15 @@ class SingleLayerVector:
             fields._size.append(layerDefinition.GetFieldDefn(i).GetWidth())
 
         # Convert types to Numpy dtypes
-        # see http://www.gdal.org/ogr__core_8h.html#a787194bea637faf12d61643124a7c9fc
+        # All OGR types can be found by typing
+        # import ogr
+        # print([ d for d in dir(ogr) if d[:3]=='OFT' ])
         # IntegerList, RealList, StringList, Integer64List not implemented yet.
-        OGR2np = {'Integer':'i4','Real':'d','String':'S','Binary':'S','Date':'S','Time':'S','DateTime':'S','Integer64':'i8'}
+        OGR2np = {'Integer':'i4','Real':'d','String':'U','Binary':'U','Date':'U','Time':'U','DateTime':'U','Integer64':'i8'}
 
         for k in range(len(fields.dtype)):
             dtype = OGR2np[fields.dtype[k]]
-            if dtype=='S':
+            if dtype=='U':
                 dtype+=str(fields._size[k])
             fields.dtype[k] = dtype
 
@@ -275,6 +277,7 @@ class SingleLayerVector:
                 #read each field associated to the feature
                 for f in self.fields.name:
                     self.fields.values[f][i] = feat.GetField(f)
+
         else:
             k=0
             for i in subset:
@@ -740,7 +743,7 @@ class SingleLayerVector:
 
 
     
-    def create_mask(self,raster='none',srs='none',xres='none',yres='none',extent='none',burn_value=255):
+    def create_mask(self,rs='none',srs='none',xres='none',yres='none',extent='none',burn_value=255):
         """
         Return a mask (array with dtype Byte) of the polygons in self.
         The spatial reference system of the mask can be set either :
@@ -749,7 +752,7 @@ class SingleLayerVector:
         - burn_value: float, the value to be burnt inside the polygons (Default is 255)
         """
 
-        if raster=='none':
+        if rs=='none':
             x_min, x_max, y_min, y_max = extent
             ysize = abs((x_max-x_min)/xres)
             xsize = abs((y_max-y_min)/yres)
@@ -762,12 +765,12 @@ class SingleLayerVector:
                 ysize=int(ysize)
         else:
             # Open the raster file
-            xsize = raster.ny
-            ysize = raster.nx
-            x_min, x_max, y_min, y_max = raster.extent
-            xres = raster.xres
-            yres = raster.yres
-            srs = raster.srs
+            xsize = rs.ny
+            ysize = rs.nx
+            x_min, x_max, y_min, y_max = rs.extent
+            xres = rs.xres
+            yres = rs.yres
+            srs = rs.srs
 
         # Create memory target raster
         target_ds = gdal.GetDriverByName('MEM').Create('', ysize, xsize, 1, gdal.GDT_Byte)
@@ -791,26 +794,26 @@ class SingleLayerVector:
         return datamask
 
 
-    def create_mask_attr(self,raster,attr,from_ds=True):
+    def create_mask_attr(self,rs,attr,from_ds=True):
         """
         Return a raster (Float32) containing the values of attr for each polygon in self, in the Spatial Reference and resolution of raster.
 	If from_ds is set to True, will use only the values saved on disk, otherwise will use the values from the georaster object.
         """
 
         # Open the raster file
-        xsize, ysize = raster.r.shape
-        x_min, x_max, y_min, y_max = raster.extent
+        xsize, ysize = rs.r.shape
+        x_min, x_max, y_min, y_max = rs.extent
     
 
         # Create memory target raster
         target_ds = gdal.GetDriverByName('MEM').Create('', ysize, xsize, 1, gdal.GDT_Float32)
         target_ds.SetGeoTransform((
-                x_min, raster.xres, 0,
-                y_max, 0, raster.yres,
+                x_min, rs.xres, 0,
+                y_max, 0, rs.yres,
                 ))
 
         # Make the target raster have the same projection as the source raster
-        target_ds.SetProjection(raster.srs.ExportToWkt())
+        target_ds.SetProjection(rs.srs.ExportToWkt())
 
         ## Loop on features ##
 
@@ -1312,7 +1315,7 @@ class Shape():
 
 # Data type conversion from numpy to OGR
 np2OGR = {'i':ogr.OFTInteger,'l':ogr.OFTInteger64,'d':ogr.OFTReal, \
-          'S':ogr.OFTString,'i8':ogr.OFTInteger64}
+          'S':ogr.OFTString,'U':ogr.OFTString,'i8':ogr.OFTInteger64}
 
 def save_shapefile(filename,gv_obj, format='ESRI Shapefile'):
     """

@@ -43,6 +43,7 @@ if __name__=='__main__':
     parser.add_argument('-save', dest='save', type=str, default='', help='str, filename to the output filename to save to disk (Default is displayed on screen).')
     parser.add_argument('-dpi', dest='dpi', type=str, default='default', help='int, dpi value to use when saving figure (Default is from rcParams).')
     parser.add_argument('-nodata', dest='nodata', type=str, default='default', help='float, no data value (Default is read from file metadata).')
+    parser.add_argument('-noresampl', dest='noresampl', default=False, action='store_true', help='True or False, if False then allow dynamic image downscaling, if True, prevent it.')
     
     args = parser.parse_args()
 
@@ -61,7 +62,7 @@ if __name__=='__main__':
 
 
     ## Resample if image is too large ##
-    if img.nx*img.ny>args.max_size**2:
+    if (img.nx*img.ny>args.max_size**2) & (not args.noresampl):
         step = max(int(img.nx/args.max_size),int(img.ny/args.max_size))
         print("Image will be downsampled by a factor %i." %step)
     else:

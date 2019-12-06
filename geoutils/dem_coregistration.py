@@ -220,10 +220,9 @@ def coreg_with_master_dem(args):
     Coregistration with the use of a master DEM
     """
 
-    ## Read DEMs ##
+    ## Read DEMs metadata ##
     # master
-    master_dem = DEMRaster(args.master_dem)
-    master_dem.r = np.float32(master_dem.r)
+    master_dem = raster.SingleBandRaster(args.master_dem,load_data=False)
     if args.nodata1!='none':
         nodata1 = float(args.nodata1)
     else:
@@ -231,48 +230,59 @@ def coreg_with_master_dem(args):
         nodata1 = band.GetNoDataValue()
 
     # slave
-    slave_dem = raster.SingleBandRaster(args.slave_dem)
-    slave_dem.r = np.float32(slave_dem.r)
+    slave_dem = raster.SingleBandRaster(args.slave_dem,load_data=False)
     if args.nodata2!='none':
       nodata2 = float(args.nodata2)
     else:
       band=slave_dem.ds.GetRasterBand(1)
       nodata2 = band.GetNoDataValue()
 
-    # master, read intersection only
-    # extent = slave_dem.intersection(args.master_dem)
-    # master_dem = DEMRaster(args.master_dem,load_data=extent, latlon=False)
-    # master_dem.r = np.float32(master_dem.r)
-    # if args.nodata1!='none':
-    #     master_dem.r[master_dem.r==float(args.nodata1)] = np.nan
-    # else:
-    #     band=master_dem.ds.GetRasterBand(1)
-    #     nodata1 = band.GetNoDataValue()
-    #     master_dem.r[master_dem.r==nodata1] = np.nan
-
-    ## reproject slave DEM into the master DEM spatial reference system ##
-    if master_dem.r.shape!=slave_dem.r.shape:
+    ## reproject DEMs into the same spatial grid, master or slave ##
+    if master_dem.extent != slave_dem.extent:
       if args.grid=='master':
         
         print("Reproject slave DEM")
+        # Read extent of DEMs intersection in master projection
+        extent = master_dem.intersection(args.slave_dem)
+
+        # Read master DEM in area of overlap
+        master_dem = raster.SingleBandRaster(args.master_dem,load_data=extent, latlon=False)
+        master_dem.r = np.float32(master_dem.r)
+
+        # Reproject slave DEM in same grid
         dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata2, interp_type=gdal.GRA_Bilinear,progress=True).r
-        gt = (master_dem.extent[0], master_dem.xres, 0.0, master_dem.extent[3], 0.0, master_dem.yres)  # Save GeoTransform for saving
-        
+
+        # Store GeoTransform for later saving
+        gt = (master_dem.extent[0], master_dem.xres, 0.0, master_dem.extent[3], 0.0, master_dem.yres)
+
       elif args.grid=='slave':
         
         print("Reproject master DEM")
+        # Read extent of DEMs intersection in slave projection
+        extent = slave_dem.intersection(args.master_dem)
+        
+        # Read slave DEM in area of overlap
+        slave_dem = raster.SingleBandRaster(args.slave_dem,load_data=extent, latlon=False)
+        dem2coreg = np.float32(slave_dem.r)
+        del slave_dem.r
+
+        # Reproject master DEM in same grid
         master_dem = master_dem.reproject(slave_dem.srs, slave_dem.nx, slave_dem.ny, slave_dem.extent[0], slave_dem.extent[3], slave_dem.xres, slave_dem.yres, dtype=6, nodata=nodata1, interp_type=gdal.GRA_Bilinear,progress=True)
-        #master_dem = DEMRaster(master_dem.ds)  # convert it to a DEMRaster object for later use of specific functions
-        dem2coreg=slave_dem.r
-        gt = (slave_dem.extent[0], slave_dem.xres, 0.0, slave_dem.extent[3], 0.0, slave_dem.yres)  # Save GeoTransform for saving
+
+        # Store GeoTransform for later saving 
+        gt = (slave_dem.extent[0], slave_dem.xres, 0.0, slave_dem.extent[3], 0.0, slave_dem.yres)
         
       else:
         sys.exit("Error : grid must be 'master' or 'slave'")
         
     else:
-      dem2coreg = slave_dem.r
-      gt = (master_dem.extent[0], master_dem.xres, 0.0, master_dem.extent[3], 0.0, master_dem.yres)  # Save GeoTransform for saving
+      master_dem = raster.SingleBandRaster(args.master_dem)
+      master_dem.r = np.float32(master_dem.r)
+      slave_dem = raster.SingleBandRaster(args.slave_dem)
+      dem2coreg = np.float32(slave_dem.r)
+      gt = master_dem.ds.GetGeoTransform()  # Save GeoTransform for saving
 
+    # Mask no data values
     if nodata1 is not None: master_dem.r[master_dem.r==nodata1] = np.nan
     if nodata2 is not None: dem2coreg[dem2coreg==nodata2] = np.nan
 
@@ -731,7 +741,7 @@ if __name__=='__main__':
     parser.add_argument('-zmin', dest='zmin', type=str, default='none', help='float, points with altitude below zmin are masked during the vertical alignment, e.g points on sea (default none)')
     parser.add_argument('-resmax', dest='resmax', type=str, default='none', help='float, maximum value of the residuals, points where |dh|>resmax are considered as outliers and removed (default none)')
     parser.add_argument('-deg', dest='degree', type=int, default=1, help='int, degree of the polynomial to be fit to residuals and removed. Set to <0 to disable. (default is 1=tilt)')
-    parser.add_argument('-grid', dest='grid', type=str, default='master', help="'master' or 'slave' : common grid to use for the DEMs (default is master DEM grid)")
+    parser.add_argument('-grid', dest='grid', type=str, default='master', help="'master' or 'slave' : only the intersection of both DEMs is extracted, either in the grid of the master DEM, or the slave (default is master DEM grid).")
     parser.add_argument('-save', dest='save', help='Save horizontal and median vertical offset in a text file',action='store_true')
     parser.add_argument('-IS', dest='IS', help='Master DEM are IceSAT data instead of a raster DEM. master_dem must then be a string to the file name or regular expression to several files (use quotes)',action='store_true')
 

@@ -17,6 +17,10 @@ Libraries and command-line utilities for geospatial data processing/analysis.
 
 Regular Python packages: numpy, scipy, matplotlib... + GDAL
 
+### Full Documentation ###
+
+http://geoutils.readthedocs.io
+
 
 ### Contributors ###
 

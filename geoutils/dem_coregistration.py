@@ -14,6 +14,7 @@ import numpy as np
 from scipy.optimize import leastsq
 import matplotlib.pyplot as pl
 from scipy.interpolate import RectBivariateSpline
+from scipy.ndimage.morphology import binary_dilation
 import argparse
 import os, sys
 import gdal
@@ -298,7 +299,15 @@ def coreg_with_master_dem(args):
     if args.shp!='none':
       outlines = vect.SingleLayerVector(args.shp)
       mask = outlines.create_mask(master_dem)
+      
+      # Dilate mask if buffer size set to positive value                                                                                                                         
+      if args.buffer>0:
+        xres = float(master_dem.xres)
+        buf_size_pix = int(args.buffer/xres)
+        mask = binary_dilation(mask,np.ones((3,3)),iterations=buf_size_pix/2)
+
       master_dem.r[mask>0] = np.nan
+        
 
     ## filter outliers ##
     if args.resmax!='none':
@@ -734,6 +743,7 @@ if __name__=='__main__':
     parser.add_argument('-plot', dest='plot', help='Plot processing steps and final results',action='store_true')
     parser.add_argument('-m', dest='maskfile', type=str, default='none', help='str, path to a mask of same size as the master DEM, to filter out non stable areas such as glaciers. Points with mask>0 are masked.  (default is none)')
     parser.add_argument('-shp', dest='shp', type=str, default='none', help='str, path to a shapefile containing outlines of objects to mask, such as RGI shapefiles (default is none)')
+    parser.add_argument('-buffer', dest='buffer', default=0, type=float, help='float, if set to >0, an additional buffer is added around the outlines. Size is in raster units. (Default is 0)')
     parser.add_argument('-n1', dest='nodata1', type=str, default='none', help='int, no data value for master DEM if not specified in the raster file (default read in the raster file)')
     parser.add_argument('-n2', dest='nodata2', type=str, default='none', help='int, no data value for slave DEM if not specified in the raster file (default read in the raster file)')
     parser.add_argument('-min_count', dest='min_count', type=int, default=30, help='int, minimum number of points in each aspect bin to be considered valid (default is 30)')

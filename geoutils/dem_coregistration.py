@@ -368,7 +368,7 @@ def coreg_with_master_dem(args):
         NMAD_old = NMAD_new
 
     print("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
-          
+    
     ### Deramping ###
     if args.degree>=0:
         print("Deramping")
@@ -449,9 +449,12 @@ def coreg_with_master_dem(args):
         pl.xlabel('DEM difference (m)')
         pl.show()
 
+    # Replace all NaNs with nodata value
+    dem2coreg[np.isnan(dem2coreg)] = nodata2
+
     #Save to output file
     #dtype = master_dem.ds.GetRasterBand(1).DataType
-    raster.simple_write_geotiff(args.outfile, dem2coreg, gt, wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
+    raster.simple_write_geotiff(args.outfile, dem2coreg, gt, wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32,nodata_value=nodata2)
 
 
 def read_icesat_elev(is_files,RoI):

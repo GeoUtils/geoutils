@@ -608,11 +608,10 @@ class SingleLayerVector:
         # output values to be stored in this list
         outputs = []
 
-
         for k in range(len(subset)):
 
             # Progressbar
-            gdal.TermProgress_nocb(float(k)/(len(subset)))
+            gdal.TermProgress_nocb(float(k+1)/len(subset))
 
             # Read feature geometry and reproject to raster projection
             feat = self.features[subset[k]].Clone()  # clone needed to not modify input layer
@@ -620,12 +619,15 @@ class SingleLayerVector:
             sh.geom.Transform(coordTrans)
             sh.read()
 
-            # Read feature extent and compare to rater extent. Features not entirely inside raster extent are excluded
+            # Read feature extent and compare to raster extent. Features not entirely inside raster extent are excluded
             xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
             if ((xmax>xr) or (xmin<xl) or (ymin<yd) or (ymax>yu)):
-                outputs.append(np.nan)
+                if callable(operator):  # case only 1 operator
+                    outputs.append(np.nan)
+                elif (isinstance(operator,list) or isinstance(operator,tuple)): # case list of operators
+                    outputs.append(np.nan*np.zeros(len(operator)))
                 continue
-            
+
             # Look only for points within the box of the feature
             i1, j1 = img.coord_to_px(xmin,ymin)
             i2, j2 = img.coord_to_px(xmax,ymax)
@@ -640,37 +642,7 @@ class SingleLayerVector:
             inside_j = jj[inside==True]
             data = img.r[inside_j,inside_i]
 
-            # Filter no data values
-            data = data[~np.isnan(data)]
-            if nodata!='':
-                data = data[data!=nodata]
-
-            # Compute statistics
-            if len(data)>0:
-                if callable(operator):  # case only 1 operator
-                    outputs.append(operator(data, **kwargs))
-                elif (isinstance(operator,list) or isinstance(operator,tuple)): # case list of operators
-                    output = [op(data, **kwargs) for op in operator]
-                    outputs.append(output)
-                    
-            else:
-                if callable(operator):
-                    outputs.append(np.nan)
-                    continue
-
-                # Look only for points within the box of the feature
-                i1, j1 = img.coord_to_px(xmin,ymin)
-                i2, j2 = img.coord_to_px(xmax,ymax)
-                jinds = np.arange(j2,j1+1,dtype='int64')
-                iinds = np.arange(i1,i2+1,dtype='int64')
-                ii, jj = np.meshgrid(iinds,jinds)
-                X, Y = img.coordinates(Xpixels=ii,Ypixels=jj)
-
-                # Select data within the feature
-                inside = geo.points_inside_polygon(X,Y,sh.vertices,skip_holes=False)
-                inside_i = ii[inside==True]
-                inside_j = jj[inside==True]
-                data = img.r[inside_j,inside_i]
+            if nbands==1:
 
                 # Filter no data values
                 data = data[~np.isnan(data)]
@@ -691,43 +663,8 @@ class SingleLayerVector:
                     elif (isinstance(operator,list) or isinstance(operator,tuple)):
                         outputs.append(np.nan*np.zeros(len(operator)))
 
-            # If multiple operators, has to transpose the list
-            if isinstance(outputs[0],list):
-                outputs = np.transpose(outputs)
-
-        else:
+            else:
                 
-            for k in range(len(subset)):
-
-                # Progressbar
-                gdal.TermProgress_nocb(float(k)/(len(subset)-1))
-
-                # Read feature geometry and reproject to raster projection
-                feat = self.features[subset[k]].Clone()  # clone needed to not modify input layer
-                sh = Shape(feat,load_data=False)
-                sh.geom.Transform(coordTrans)
-                sh.read()
-
-                # Read feature extent and compare to raster extent. Features not entirely inside raster extent are excluded
-                xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
-                if ((xmax>xr) or (xmin<xl) or (ymin<yd) or (ymax>yu)):
-                    outputs.append(np.nan)
-                    continue
-
-                # Look only for points within the box of the feature
-                i1, j1 = img.coord_to_px(xmin,ymin)
-                i2, j2 = img.coord_to_px(xmax,ymax)
-                jinds = np.arange(j2,j1+1,dtype='int64')
-                iinds = np.arange(i1,i2+1,dtype='int64')
-                ii, jj = np.meshgrid(iinds,jinds)
-                X, Y = img.coordinates(Xpixels=ii,Ypixels=jj)
-
-                # Select data within the feature
-                inside = geo.points_inside_polygon(X,Y,sh.vertices,skip_holes=False)
-                inside_i = ii[inside==True]
-                inside_j = jj[inside==True]
-                data = img.r[inside_j,inside_i]
-
                 # Filter no data values
                 data = np.ma.masked_array(data,mask=(np.isnan(data)))
                 if (nodata!='') & (nodata!=None):
@@ -738,8 +675,12 @@ class SingleLayerVector:
                         outputs.append(operator(data))
                 else:
                         outputs.append([np.nan,]*nbands)
-    
-        return outputs
+
+        # If multiple operators, has to transpose the list
+        if (isinstance(operator,list) or isinstance(operator,tuple)):
+            outputs = np.transpose(outputs)
+
+        return np.array(outputs)
 
 
     

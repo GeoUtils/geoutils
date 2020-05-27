@@ -20,4 +20,5 @@ Regular Python packages: numpy, scipy, matplotlib... + GDAL
 
 ### Contributors ###
 
-* Amaury Dehecq
+* Amaury Dehecq (main developer)
+* Andrew Tedstone

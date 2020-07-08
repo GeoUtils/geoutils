@@ -24,4 +24,5 @@ http://geoutils.readthedocs.io
 
 ### Contributors ###
 
-* Amaury Dehecq
+* Amaury Dehecq (main developer)
+* Andrew Tedstone

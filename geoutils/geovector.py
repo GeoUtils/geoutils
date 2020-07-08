@@ -25,7 +25,7 @@ except ImportError:
     pass
 
 #Personal libraries
-import georaster as raster
+import georaster as geor
 from geoutils import geometry as geo
 
 """
@@ -530,8 +530,9 @@ class SingleLayerVector:
 
         # Read raster extent
         if isinstance(rs,str):  # case raster is filename
-            img = raster.SingleBandRaster(rs,load_data=False)
-        elif isinstance(rs,types.InstanceType):   # case raster is a georaster object
+            img = geor.SingleBandRaster(rs,load_data=False)
+            #elif isinstance(rs,types.InstanceType):   # case raster is a georaster object
+        elif (isinstance(rs,geor.SingleBandRaster) or isinstance(rs,geor.MultiBandRaster)):   # case raster is a georaster instance
             img = rs
         xmin, xmax, ymin, ymax = img.extent
 
@@ -561,10 +562,10 @@ class SingleLayerVector:
         """
 
         # Read raster
-        if isinstance(rs,raster.SingleBandRaster):
+        if isinstance(rs,geor.SingleBandRaster):
             img = rs
             nbands = 1
-        elif isinstance(rs,raster.MultiBandRaster):
+        elif isinstance(rs,geor.MultiBandRaster):
             img = rs
             nbands = img.r.shape[2]
         elif isinstance(rs,str):
@@ -578,7 +579,7 @@ class SingleLayerVector:
                 bands = tuple(bands)
                 nbands = len(bands)
 
-            img = raster.MultiBandRaster(rs,bands=bands)
+            img = geor.MultiBandRaster(rs,bands=bands)
 
         else:
             'ERROR: raster must be either a georaster instance or a string (path to filename), now is %s' %type(raster)
@@ -619,7 +620,7 @@ class SingleLayerVector:
             sh.geom.Transform(coordTrans)
             sh.read()
 
-            # Read feature extent and compare to raster extent. Features not entirely inside raster extent are excluded
+            # Read feature extent and compare to rater extent. Features not entirely inside raster extent are excluded
             xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
             if ((xmax>xr) or (xmin<xl) or (ymin<yd) or (ymax>yu)):
                 if callable(operator):  # case only 1 operator
@@ -900,7 +901,7 @@ class SingleLayerVector:
         """
 
         # Read raster headers
-        img = raster.SingleBandRaster(inraster,load_data=False)
+        img = geor.SingleBandRaster(inraster,load_data=False)
         
         # Get the extent for the whole layer or a specific feature
         if feature=='all':
@@ -922,7 +923,7 @@ class SingleLayerVector:
         latlon=False
 
         # Now load the raster for the specific extent
-        img = raster.SingleBandRaster(inraster,load_data=extent,latlon=latlon,downsampl=downsampl)
+        img = geor.SingleBandRaster(inraster,load_data=extent,latlon=latlon,downsampl=downsampl)
 
         # Mask values outside the features if required
         if nodata_value==None:
@@ -940,7 +941,7 @@ class SingleLayerVector:
         # Save to output file or georaster object
         gtIn = img.ds.GetGeoTransform()
         gtOut = (img.extent[0], gtIn[1], gtIn[2], img.extent[3], gtIn[4], gtIn[5])
-        imgOut = raster.simple_write_geotiff(outfile, img.r, gtOut, wkt=img.srs.ExportToWkt(), dtype=img.ds.GetRasterBand(1).DataType, nodata_value=nodata)
+        imgOut = geor.simple_write_geotiff(outfile, img.r, gtOut, wkt=img.srs.ExportToWkt(), dtype=img.ds.GetRasterBand(1).DataType, nodata_value=nodata)
 
         if outfile=='none':
             return imgOut

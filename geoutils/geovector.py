@@ -25,7 +25,7 @@ except ImportError:
     pass
 
 #Personal libraries
-import georaster as raster
+import georaster as geor
 from geoutils import geometry as geo
 
 """
@@ -130,49 +130,50 @@ def multipoly2poly(in_lyr, out_lyr):
 
 
 class SingleLayerVector:
+    """ Construct an object from a vector file with a single layer. 
+    The class works as a wrapper to the OGR API. A vector dataset can be loaded
+    into a class without needing to load the actual data, which is useful
+    for querying geo-referencing information without memory overheads.
 
-    def __init__(self,ds_filename,load_data=True,latlon=True,band=1):
-        """ Construct object from vector file with a single layer. 
+    :param ds_filename: filename of the dataset to import
+    :type ds_filename: str
+    :param load_data: set to True to load the data in memory
+    :type load_data: boolean
+
+    Attributes:
+        ds : the OGR handle to the dataset, which provides access to 
+             all OGR functions, e.g. GetLayer, GetLayerCount...
+             More information on API:
+             http://gdal.org/python/osgeo.ogr.DataSource-class.html
+
+        srs : an OGR Spatial Reference object representation of the 
+             dataset.
+             More information on API:
+             http://www.gdal.org/classOGRSpatialReference.html
+
+        proj : a pyproj coordinate conversion function between the 
+             dataset coordinate system and lat/lon.
+
+        extent : tuple of the corners of the dataset in native coordinate
+                 system, as (left,right,bottom,top).
+
+        layer : an OGR Layer object, 
+                see http://gdal.org/python/osgeo.ogr.Layer-class.html
+
+        fields : an OGR field, i.e attributes to each feature. 
+                 - fields.name contains the name of the fields
+                 - fields.dtype contains the Numpy.dtype of the fields
+                 - fields.value contains the value of the fields in form of a dictionary
+
+    Additionally, a number of instances are available in the class. 
+    """
         
-        Parameters:
-            ds_filename : filename of the dataset to import
+    def __init__(self,ds_filename,load_data=False):
 
-       The class works as a wrapper to the OGR API. A vector dataset can be loaded
-into a class without needing to load the actual data, which is useful
-for querying geo-referencing information without memory overheads.
-
-The following attributes are available :
-
-    class.ds    :   the OGR handle to the dataset, which provides access to 
-                    all OGR functions, e.g. GetLayer, GetLayerCount...
-                        More information on API:
-                        http://gdal.org/python/osgeo.ogr.DataSource-class.html
-
-    class.srs   :   an OGR Spatial Reference object representation of the 
-                    dataset.
-                        More information on API:
-                        http://www.gdal.org/classOGRSpatialReference.html
-
-    class.proj  :   a pyproj coordinate conversion function between the 
-                    dataset coordinate system and lat/lon.
-
-    class.extent :  tuple of the corners of the dataset in native coordinate
-                    system, as (left,right,bottom,top).
-
-    class.extent :  tuple of the corners of the dataset in native coordinate
-                    system, as (left,right,bottom,top).
-
-    class.layer : an OGR Layer object, see http://gdal.org/python/osgeo.ogr.Layer-class.html
-
-    class.fields : an OGR field, i.e attributes to each feature. 
-                   - fields.name contains the name of the fields
-                   - fields.dtype contains the Numpy.dtype of the fields
-                   - fields.value contains the value of the fields in form of a dictionary
-
-Additionally, a number of instances are available in the class. 
-        """
-
-        self._load_ds(ds_filename)     
+        self._load_ds(ds_filename)
+        
+        if load_data==True:
+            self.read()
 
 
 
@@ -221,13 +222,15 @@ Additionally, a number of instances are available in the class.
             fields._size.append(layerDefinition.GetFieldDefn(i).GetWidth())
 
         # Convert types to Numpy dtypes
-        # see http://www.gdal.org/ogr__core_8h.html#a787194bea637faf12d61643124a7c9fc
+        # All OGR types can be found by typing
+        # import ogr
+        # print([ d for d in dir(ogr) if d[:3]=='OFT' ])
         # IntegerList, RealList, StringList, Integer64List not implemented yet.
-        OGR2np = {'Integer':'i4','Real':'d','String':'S','Binary':'S','Date':'S','Time':'S','DateTime':'S','Integer64':'i8'}
+        OGR2np = {'Integer':'i4','Real':'d','String':'U','Binary':'U','Date':'U','Time':'U','DateTime':'U','Integer64':'i8'}
 
         for k in range(len(fields.dtype)):
             dtype = OGR2np[fields.dtype[k]]
-            if dtype=='S':
+            if dtype=='U':
                 dtype+=str(fields._size[k])
             fields.dtype[k] = dtype
 
@@ -274,6 +277,7 @@ Additionally, a number of instances are available in the class.
                 #read each field associated to the feature
                 for f in self.fields.name:
                     self.fields.values[f][i] = feat.GetField(f)
+
         else:
             k=0
             for i in subset:
@@ -323,6 +327,13 @@ Additionally, a number of instances are available in the class.
     def reproject(self,target_srs):
         """
         Return a new SingleLayerVector object with features reprojected according to target_srs.
+
+        :param target_srs: Spatial Reference System to reproject to
+        :type target_srs: srs.SpatialReference
+
+        :returns: A SingleLayerVector object containing the
+            reprojected layer (in memory - not saved to file system)
+        :rtype: geovector.SingleLayerVector       
         """
         # create the CoordinateTransformation
         coordTrans = osr.CoordinateTransformation(self.srs, target_srs)
@@ -519,8 +530,9 @@ Additionally, a number of instances are available in the class.
 
         # Read raster extent
         if isinstance(rs,str):  # case raster is filename
-            img = raster.SingleBandRaster(rs,load_data=False)
-        elif isinstance(rs,types.InstanceType):   # case raster is a georaster object
+            img = geor.SingleBandRaster(rs,load_data=False)
+            #elif isinstance(rs,types.InstanceType):   # case raster is a georaster object
+        elif (isinstance(rs,geor.SingleBandRaster) or isinstance(rs,geor.MultiBandRaster)):   # case raster is a georaster instance
             img = rs
         xmin, xmax, ymin, ymax = img.extent
 
@@ -550,10 +562,10 @@ Additionally, a number of instances are available in the class.
         """
 
         # Read raster
-        if isinstance(rs,raster.SingleBandRaster):
+        if isinstance(rs,geor.SingleBandRaster):
             img = rs
             nbands = 1
-        elif isinstance(rs,raster.MultiBandRaster):
+        elif isinstance(rs,geor.MultiBandRaster):
             img = rs
             nbands = img.r.shape[2]
         elif isinstance(rs,str):
@@ -567,7 +579,7 @@ Additionally, a number of instances are available in the class.
                 bands = tuple(bands)
                 nbands = len(bands)
 
-            img = raster.MultiBandRaster(rs,bands=bands)
+            img = geor.MultiBandRaster(rs,bands=bands)
 
         else:
             'ERROR: raster must be either a georaster instance or a string (path to filename), now is %s' %type(raster)
@@ -597,11 +609,10 @@ Additionally, a number of instances are available in the class.
         # output values to be stored in this list
         outputs = []
 
-
         for k in range(len(subset)):
 
             # Progressbar
-            gdal.TermProgress_nocb(float(k)/(len(subset)))
+            gdal.TermProgress_nocb(float(k+1)/len(subset))
 
             # Read feature geometry and reproject to raster projection
             feat = self.features[subset[k]].Clone()  # clone needed to not modify input layer
@@ -612,9 +623,12 @@ Additionally, a number of instances are available in the class.
             # Read feature extent and compare to rater extent. Features not entirely inside raster extent are excluded
             xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
             if ((xmax>xr) or (xmin<xl) or (ymin<yd) or (ymax>yu)):
-                outputs.append(np.nan)
+                if callable(operator):  # case only 1 operator
+                    outputs.append(np.nan)
+                elif (isinstance(operator,list) or isinstance(operator,tuple)): # case list of operators
+                    outputs.append(np.nan*np.zeros(len(operator)))
                 continue
-            
+
             # Look only for points within the box of the feature
             i1, j1 = img.coord_to_px(xmin,ymin)
             i2, j2 = img.coord_to_px(xmax,ymax)
@@ -629,37 +643,7 @@ Additionally, a number of instances are available in the class.
             inside_j = jj[inside==True]
             data = img.r[inside_j,inside_i]
 
-            # Filter no data values
-            data = data[~np.isnan(data)]
-            if nodata!='':
-                data = data[data!=nodata]
-
-            # Compute statistics
-            if len(data)>0:
-                if callable(operator):  # case only 1 operator
-                    outputs.append(operator(data, **kwargs))
-                elif (isinstance(operator,list) or isinstance(operator,tuple)): # case list of operators
-                    output = [op(data, **kwargs) for op in operator]
-                    outputs.append(output)
-                    
-            else:
-                if callable(operator):
-                    outputs.append(np.nan)
-                    continue
-
-                # Look only for points within the box of the feature
-                i1, j1 = img.coord_to_px(xmin,ymin)
-                i2, j2 = img.coord_to_px(xmax,ymax)
-                jinds = np.arange(j2,j1+1,dtype='int64')
-                iinds = np.arange(i1,i2+1,dtype='int64')
-                ii, jj = np.meshgrid(iinds,jinds)
-                X, Y = img.coordinates(Xpixels=ii,Ypixels=jj)
-
-                # Select data within the feature
-                inside = geo.points_inside_polygon(X,Y,sh.vertices,skip_holes=False)
-                inside_i = ii[inside==True]
-                inside_j = jj[inside==True]
-                data = img.r[inside_j,inside_i]
+            if nbands==1:
 
                 # Filter no data values
                 data = data[~np.isnan(data)]
@@ -680,43 +664,8 @@ Additionally, a number of instances are available in the class.
                     elif (isinstance(operator,list) or isinstance(operator,tuple)):
                         outputs.append(np.nan*np.zeros(len(operator)))
 
-            # If multiple operators, has to transpose the list
-            if isinstance(outputs[0],list):
-                outputs = np.transpose(outputs)
-
-        else:
+            else:
                 
-            for k in range(len(subset)):
-
-                # Progressbar
-                gdal.TermProgress_nocb(float(k)/(len(subset)-1))
-
-                # Read feature geometry and reproject to raster projection
-                feat = self.features[subset[k]].Clone()  # clone needed to not modify input layer
-                sh = Shape(feat,load_data=False)
-                sh.geom.Transform(coordTrans)
-                sh.read()
-
-                # Read feature extent and compare to raster extent. Features not entirely inside raster extent are excluded
-                xmin, xmax, ymin, ymax = sh.geom.GetEnvelope()
-                if ((xmax>xr) or (xmin<xl) or (ymin<yd) or (ymax>yu)):
-                    outputs.append(np.nan)
-                    continue
-
-                # Look only for points within the box of the feature
-                i1, j1 = img.coord_to_px(xmin,ymin)
-                i2, j2 = img.coord_to_px(xmax,ymax)
-                jinds = np.arange(j2,j1+1,dtype='int64')
-                iinds = np.arange(i1,i2+1,dtype='int64')
-                ii, jj = np.meshgrid(iinds,jinds)
-                X, Y = img.coordinates(Xpixels=ii,Ypixels=jj)
-
-                # Select data within the feature
-                inside = geo.points_inside_polygon(X,Y,sh.vertices,skip_holes=False)
-                inside_i = ii[inside==True]
-                inside_j = jj[inside==True]
-                data = img.r[inside_j,inside_i]
-
                 # Filter no data values
                 data = np.ma.masked_array(data,mask=(np.isnan(data)))
                 if (nodata!='') & (nodata!=None):
@@ -727,20 +676,25 @@ Additionally, a number of instances are available in the class.
                         outputs.append(operator(data))
                 else:
                         outputs.append([np.nan,]*nbands)
-    
-        return outputs
+
+        # If multiple operators, has to transpose the list
+        if (isinstance(operator,list) or isinstance(operator,tuple)):
+            outputs = np.transpose(outputs)
+
+        return np.array(outputs)
 
 
     
-    def create_mask(self,raster='none',srs='none',xres='none',yres='none',extent='none'):
+    def create_mask(self,rs='none',srs='none',xres='none',yres='none',extent='none',burn_value=255):
         """
         Return a mask (array with dtype Byte) of the polygons in self.
         The spatial reference system of the mask can be set either :
         - by giving a georaster.__Raster object as input
         - by specifying the reference system srs, the raster pixel size (xres,yres) and the raster extent
+        - burn_value: float, the value to be burnt inside the polygons (Default is 255)
         """
 
-        if raster=='none':
+        if rs=='none':
             x_min, x_max, y_min, y_max = extent
             ysize = abs((x_max-x_min)/xres)
             xsize = abs((y_max-y_min)/yres)
@@ -753,12 +707,12 @@ Additionally, a number of instances are available in the class.
                 ysize=int(ysize)
         else:
             # Open the raster file
-            xsize = raster.ny
-            ysize = raster.nx
-            x_min, x_max, y_min, y_max = raster.extent
-            xres = raster.xres
-            yres = raster.yres
-            srs = raster.srs
+            xsize = rs.ny
+            ysize = rs.nx
+            x_min, x_max, y_min, y_max = rs.extent
+            xres = rs.xres
+            yres = rs.yres
+            srs = rs.srs
 
         # Create memory target raster
         target_ds = gdal.GetDriverByName('MEM').Create('', ysize, xsize, 1, gdal.GDT_Byte)
@@ -771,7 +725,7 @@ Additionally, a number of instances are available in the class.
         target_ds.SetProjection(srs.ExportToWkt())
 
         # Rasterize
-        err = gdal.RasterizeLayer(target_ds, [1], self.layer,burn_values=[255])
+        err = gdal.RasterizeLayer(target_ds, [1], self.layer,burn_values=[burn_value])
         if err != 0:
             raise Exception("error rasterizing layer: %s" % err)
 
@@ -782,26 +736,26 @@ Additionally, a number of instances are available in the class.
         return datamask
 
 
-    def create_mask_attr(self,raster,attr,from_ds=True):
+    def create_mask_attr(self,rs,attr,from_ds=True):
         """
         Return a raster (Float32) containing the values of attr for each polygon in self, in the Spatial Reference and resolution of raster.
 	If from_ds is set to True, will use only the values saved on disk, otherwise will use the values from the georaster object.
         """
 
         # Open the raster file
-        xsize, ysize = raster.r.shape
-        x_min, x_max, y_min, y_max = raster.extent
+        xsize, ysize = rs.r.shape
+        x_min, x_max, y_min, y_max = rs.extent
     
 
         # Create memory target raster
         target_ds = gdal.GetDriverByName('MEM').Create('', ysize, xsize, 1, gdal.GDT_Float32)
         target_ds.SetGeoTransform((
-                x_min, raster.xres, 0,
-                y_max, 0, raster.yres,
+                x_min, rs.xres, 0,
+                y_max, 0, rs.yres,
                 ))
 
         # Make the target raster have the same projection as the source raster
-        target_ds.SetProjection(raster.srs.ExportToWkt())
+        target_ds.SetProjection(rs.srs.ExportToWkt())
 
         ## Loop on features ##
 
@@ -947,7 +901,7 @@ Additionally, a number of instances are available in the class.
         """
 
         # Read raster headers
-        img = raster.SingleBandRaster(inraster,load_data=False)
+        img = geor.SingleBandRaster(inraster,load_data=False)
         
         # Get the extent for the whole layer or a specific feature
         if feature=='all':
@@ -969,7 +923,7 @@ Additionally, a number of instances are available in the class.
         latlon=False
 
         # Now load the raster for the specific extent
-        img = raster.SingleBandRaster(inraster,load_data=extent,latlon=latlon,downsampl=downsampl)
+        img = geor.SingleBandRaster(inraster,load_data=extent,latlon=latlon,downsampl=downsampl)
 
         # Mask values outside the features if required
         if nodata_value==None:
@@ -987,7 +941,7 @@ Additionally, a number of instances are available in the class.
         # Save to output file or georaster object
         gtIn = img.ds.GetGeoTransform()
         gtOut = (img.extent[0], gtIn[1], gtIn[2], img.extent[3], gtIn[4], gtIn[5])
-        imgOut = raster.simple_write_geotiff(outfile, img.r, gtOut, wkt=img.srs.ExportToWkt(), dtype=img.ds.GetRasterBand(1).DataType, nodata_value=nodata)
+        imgOut = geor.simple_write_geotiff(outfile, img.r, gtOut, wkt=img.srs.ExportToWkt(), dtype=img.ds.GetRasterBand(1).DataType, nodata_value=nodata)
 
         if outfile=='none':
             return imgOut
@@ -1303,7 +1257,7 @@ class Shape():
 
 # Data type conversion from numpy to OGR
 np2OGR = {'i':ogr.OFTInteger,'l':ogr.OFTInteger64,'d':ogr.OFTReal, \
-          'S':ogr.OFTString,'i8':ogr.OFTInteger64}
+          'S':ogr.OFTString,'U':ogr.OFTString,'i8':ogr.OFTInteger64}
 
 def save_shapefile(filename,gv_obj, format='ESRI Shapefile'):
     """

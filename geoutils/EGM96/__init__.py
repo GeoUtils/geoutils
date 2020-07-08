@@ -1,2 +1,2 @@
 #Dummy header file
-from _egm96 import EGM96reader
+from geoutils.EGM96._egm96 import EGM96reader

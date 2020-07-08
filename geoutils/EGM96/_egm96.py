@@ -150,11 +150,11 @@ class EGM96reader:
 
         res = self.oper(lon,lat)
         err = res-testh
-        print 'All errors are reported in meters.'
-        print '**********************************'
-        print 'Maximum Error: ', np.max(err)
-        print 'Minimum Error: ', np.min(err)
-        print 'Standard deviation: ', np.std(err)
+        print('All errors are reported in meters.')
+        print('**********************************')
+        print('Maximum Error: ', np.max(err))
+        print('Minimum Error: ', np.min(err))
+        print('Standard deviation: ', np.std(err))
 
 
     def plot(self):

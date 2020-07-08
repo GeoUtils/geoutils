@@ -14,6 +14,7 @@ import numpy as np
 from scipy.optimize import leastsq
 import matplotlib.pyplot as pl
 from scipy.interpolate import RectBivariateSpline
+from scipy.ndimage.morphology import binary_dilation
 import argparse
 import os, sys
 import gdal
@@ -172,7 +173,7 @@ def deramping(diff,X,Y,d=1,plot=False):
       return None
     else:
       # k is degree considered, j is power of Y varying from 0 to k, k-j is power of X varying from k to 0, k*(k+1)/2 + j is index of the coefficient
-      return np.sum([p[k*(k+1)/2+j]*X**(k-j)*Y**j for k in xrange(d+1) for j in xrange(k+1)],axis=0)
+      return np.sum([p[k*(k+1)//2+j]*X**(k-j)*Y**j for k in range(d+1) for j in range(k+1)],axis=0)
     
 
   def residuals(p,z,X,Y,d):
@@ -190,8 +191,8 @@ def deramping(diff,X,Y,d=1,plot=False):
     x = x[inds]
     y = y[inds]
     z = z[inds]
-    
-  p0 = np.zeros((d+1)*(d+2)/2)   # inital guess for the polynomial coeff
+
+  p0 = np.zeros((d+1)*(d+2)//2)   # inital guess for the polynomial coeff
   plsq = leastsq(residuals, p0, args = (z,x,y,d),full_output = 1)
   zfit = poly2D(X,Y,plsq[0],d)
   
@@ -220,10 +221,9 @@ def coreg_with_master_dem(args):
     Coregistration with the use of a master DEM
     """
 
-    ## Read DEMs ##
+    ## Read DEMs metadata ##
     # master
-    master_dem = DEMRaster(args.master_dem)
-    master_dem.r = np.float32(master_dem.r)
+    master_dem = raster.SingleBandRaster(args.master_dem,load_data=False)
     if args.nodata1!='none':
         nodata1 = float(args.nodata1)
     else:
@@ -231,48 +231,59 @@ def coreg_with_master_dem(args):
         nodata1 = band.GetNoDataValue()
 
     # slave
-    slave_dem = raster.SingleBandRaster(args.slave_dem)
-    slave_dem.r = np.float32(slave_dem.r)
+    slave_dem = raster.SingleBandRaster(args.slave_dem,load_data=False)
     if args.nodata2!='none':
       nodata2 = float(args.nodata2)
     else:
       band=slave_dem.ds.GetRasterBand(1)
       nodata2 = band.GetNoDataValue()
 
-    # master, read intersection only
-    # extent = slave_dem.intersection(args.master_dem)
-    # master_dem = DEMRaster(args.master_dem,load_data=extent, latlon=False)
-    # master_dem.r = np.float32(master_dem.r)
-    # if args.nodata1!='none':
-    #     master_dem.r[master_dem.r==float(args.nodata1)] = np.nan
-    # else:
-    #     band=master_dem.ds.GetRasterBand(1)
-    #     nodata1 = band.GetNoDataValue()
-    #     master_dem.r[master_dem.r==nodata1] = np.nan
-
-    ## reproject slave DEM into the master DEM spatial reference system ##
-    if master_dem.r.shape!=slave_dem.r.shape:
+    ## reproject DEMs into the same spatial grid, master or slave ##
+    if master_dem.extent != slave_dem.extent:
       if args.grid=='master':
         
-        print "Reproject slave DEM"
+        print("Reproject slave DEM")
+        # Read extent of DEMs intersection in master projection
+        extent = master_dem.intersection(args.slave_dem)
+
+        # Read master DEM in area of overlap
+        master_dem = raster.SingleBandRaster(args.master_dem,load_data=extent, latlon=False)
+        master_dem.r = np.float32(master_dem.r)
+
+        # Reproject slave DEM in same grid
         dem2coreg = slave_dem.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, nodata=nodata2, interp_type=gdal.GRA_Bilinear,progress=True).r
-        gt = (master_dem.extent[0], master_dem.xres, 0.0, master_dem.extent[3], 0.0, master_dem.yres)  # Save GeoTransform for saving
-        
+
+        # Store GeoTransform for later saving
+        gt = (master_dem.extent[0], master_dem.xres, 0.0, master_dem.extent[3], 0.0, master_dem.yres)
+
       elif args.grid=='slave':
         
-        print "Reproject master DEM"
+        print("Reproject master DEM")
+        # Read extent of DEMs intersection in slave projection
+        extent = slave_dem.intersection(args.master_dem)
+        
+        # Read slave DEM in area of overlap
+        slave_dem = raster.SingleBandRaster(args.slave_dem,load_data=extent, latlon=False)
+        dem2coreg = np.float32(slave_dem.r)
+        del slave_dem.r
+
+        # Reproject master DEM in same grid
         master_dem = master_dem.reproject(slave_dem.srs, slave_dem.nx, slave_dem.ny, slave_dem.extent[0], slave_dem.extent[3], slave_dem.xres, slave_dem.yres, dtype=6, nodata=nodata1, interp_type=gdal.GRA_Bilinear,progress=True)
-        #master_dem = DEMRaster(master_dem.ds)  # convert it to a DEMRaster object for later use of specific functions
-        dem2coreg=slave_dem.r
-        gt = (slave_dem.extent[0], slave_dem.xres, 0.0, slave_dem.extent[3], 0.0, slave_dem.yres)  # Save GeoTransform for saving
+
+        # Store GeoTransform for later saving 
+        gt = (slave_dem.extent[0], slave_dem.xres, 0.0, slave_dem.extent[3], 0.0, slave_dem.yres)
         
       else:
         sys.exit("Error : grid must be 'master' or 'slave'")
         
     else:
-      dem2coreg = slave_dem.r
-      gt = (master_dem.extent[0], master_dem.xres, 0.0, master_dem.extent[3], 0.0, master_dem.yres)  # Save GeoTransform for saving
+      master_dem = raster.SingleBandRaster(args.master_dem)
+      master_dem.r = np.float32(master_dem.r)
+      slave_dem = raster.SingleBandRaster(args.slave_dem)
+      dem2coreg = np.float32(slave_dem.r)
+      gt = master_dem.ds.GetGeoTransform()  # Save GeoTransform for saving
 
+    # Mask no data values
     if nodata1 is not None: master_dem.r[master_dem.r==nodata1] = np.nan
     if nodata2 is not None: dem2coreg[dem2coreg==nodata2] = np.nan
 
@@ -280,7 +291,7 @@ def coreg_with_master_dem(args):
     if args.maskfile!='none':
         mask = raster.SingleBandRaster(args.maskfile)
         if master_dem.r.shape!=mask.r.shape:
-          print "Reproject mask"
+          print("Reproject mask")
           mask = mask.reproject(master_dem.srs, master_dem.nx, master_dem.ny, master_dem.extent[0], master_dem.extent[3], master_dem.xres, master_dem.yres, dtype=6, interp_type=gdal.GRA_NearestNeighbour,progress=True)  # nearest neighbor interpolation
 
         master_dem.r[mask.r>0] = np.nan
@@ -288,7 +299,15 @@ def coreg_with_master_dem(args):
     if args.shp!='none':
       outlines = vect.SingleLayerVector(args.shp)
       mask = outlines.create_mask(master_dem)
+      
+      # Dilate mask if buffer size set to positive value                                                                                                                         
+      if args.buffer>0:
+        xres = float(master_dem.xres)
+        buf_size_pix = int(args.buffer/xres)
+        mask = binary_dilation(mask,np.ones((3,3)),iterations=buf_size_pix/2)
+
       master_dem.r[mask>0] = np.nan
+        
 
     ## filter outliers ##
     if args.resmax!='none':
@@ -306,8 +325,8 @@ def coreg_with_master_dem(args):
     ## Print out some statistics
     median = np.median(diff_before[np.isfinite(diff_before)])
     NMAD_old = 1.4826*np.median(np.abs(diff_before[np.isfinite(diff_before)]-median))
-    print "Statistics on initial dh"
-    print "Median : %f, NMAD : %f" %(median,NMAD_old)
+    print("Statistics on initial dh")
+    print("Median : %f, NMAD : %f" %(median,NMAD_old))
 
     ## Display
     if args.plot==True:
@@ -332,9 +351,9 @@ def coreg_with_master_dem(args):
 
 
     ## Iterations to estimate DEMs shift
-    print "Iteratively estimate DEMs shift"
+    print("Iteratively estimate DEMs shift")
 
-    for i in xrange(args.niter):
+    for i in range(args.niter):
 
 	# remove bias
         dem2coreg-=median
@@ -344,7 +363,7 @@ def coreg_with_master_dem(args):
 
         #compute offset
         east, north, c = horizontal_shift(dh,slope,aspect,args.plot,args.min_count)
-        print "#%i - Offset in pixels : (%f,%f)" %(i+1,east,north)
+        print("#%i - Offset in pixels : (%f,%f)" %(i+1,east,north))
         xoff+=east
         yoff+=north
     
@@ -364,63 +383,70 @@ def coreg_with_master_dem(args):
         NMAD_new = 1.4826*np.median(np.abs(diff-np.median(diff)))
         median = np.median(diff)
 
-        print "Median : %.2f, NMAD = %.2f, Gain : %.2f%%" %(median,NMAD_new,(NMAD_new-NMAD_old)/NMAD_old*100)
+        print("Median : %.2f, NMAD = %.2f, Gain : %.2f%%" %(median,NMAD_new,(NMAD_new-NMAD_old)/NMAD_old*100))
         NMAD_old = NMAD_new
 
-    print "Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff)
+    print("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
     
-    if args.save==True:
-      fname, ext = os.path.splitext(args.outfile)
-      fname+='_shift.txt'
-      f = open(fname,'w')
-      f.write("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
-      f.write("Final NMAD : %f" %NMAD_new)
-      f.close()
-      print "Offset saved in %s" %fname
-      
     ### Deramping ###
-    print "Deramping"
-    diff = dem2coreg-master_dem.r
-    
-    # remove points above altitude threshold (snow covered areas) 
-    if args.zmax!='none':
-      diff[master_dem.r>int(args.zmax)] = np.nan
+    if args.degree>=0:
+        print("Deramping")
+        diff = dem2coreg-master_dem.r
 
-    # remove points below altitude threshold (e.g sea ice)
-    if args.zmin!='none':
-      diff[master_dem.r<int(args.zmin)] = np.nan
+        # remove points above altitude threshold (snow covered areas) 
+        if args.zmax!='none':
+          diff[master_dem.r>int(args.zmax)] = np.nan
 
-    # remove points with slope higher than 40° that are more error-prone
-    # removed until issue with Nan is fixed, see previous commit
-    #slope, aspect = master_dem.compute_slope()
-    #diff[slope>=40*np.pi/180] = np.nan
-    #diff[np.isnan(slope)] = np.nan
+        # remove points below altitude threshold (e.g sea ice)
+        if args.zmin!='none':
+          diff[master_dem.r<int(args.zmin)] = np.nan
 
-    # remove outliers
-    med = np.median(diff[np.isfinite(diff)])
-    mad=1.4826*np.median(np.abs(diff[np.isfinite(diff)]-med))
-    diff[np.abs(diff-med)>3*mad] = np.nan
+        # remove points with slope higher than 40° that are more error-prone
+        # removed until issue with Nan is fixed, see previous commit
+        #slope, aspect = master_dem.compute_slope()
+        #diff[slope>=40*np.pi/180] = np.nan
+        #diff[np.isnan(slope)] = np.nan
 
-    # estimate a ramp and remove it
-    ramp = deramping(diff,X,Y,d=args.degree,plot=args.plot)
-    dem2coreg-=ramp(X,Y)
+        # remove outliers
+        med = np.median(diff[np.isfinite(diff)])
+        mad=1.4826*np.median(np.abs(diff[np.isfinite(diff)]-med))
+        diff[np.abs(diff-med)>3*mad] = np.nan
+
+        # estimate a ramp and remove it
+        ramp = deramping(diff,X,Y,d=args.degree,plot=args.plot)
+        vshift = ramp(X,Y)
+        dem2coreg-=vshift  #ramp(X,Y)
 
     # save to output file
     if args.save==True:
       fname, ext = os.path.splitext(args.outfile)
-      fname+='_ramp.TIF'
-      #fname = WD+'/ramp.out'
-      raster.simple_write_geotiff(fname, ramp(X,Y), gt, wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
-      #ramp(X,Y).tofile(fname)
-      print "Ramp saved in %s" %fname
+      fname+='_shift.txt'
+      f = open(fname,'w')
+      f.write("Final offset: east (pixels), north (pixels), median up (m)\n")
+      if args.degree>=0:
+        vshift_med = np.median(vshift[nanval_new==0])
+      else:
+        vshift_med = np.nan
+      f.write("%g, %g, %g\n" %(xoff, yoff, vshift_med))
+      f.write("Final NMAD (m) :\n%f" %NMAD_new)
+      f.close()
+      print("Offset saved in %s" %fname)
+
+    # Save the ramp as a GeoTiff
+    # if args.save==True:
+    #   fname, ext = os.path.splitext(args.outfile)
+    #   fname+='_ramp.TIF'
+    #   raster.simple_write_geotiff(fname, ramp(X,Y), gt, wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
+    #   #ramp(X,Y).tofile(fname)
+    #   print("Ramp saved in %s" %fname)
       
     # print some statistics
     diff = dem2coreg-master_dem.r
     diff = diff[np.isfinite(diff)]
     median = np.median(diff)
     NMAD = 1.4826*np.median(np.abs(diff-median))
-    print "Final DEM"
-    print "Median : %.2f, NMAD = %.2f" %(median,NMAD)
+    print("Final DEM")
+    print("Median : %.2f, NMAD = %.2f" %(median,NMAD))
 
 
     #Display results
@@ -442,9 +468,12 @@ def coreg_with_master_dem(args):
         pl.xlabel('DEM difference (m)')
         pl.show()
 
+    # Replace all NaNs with nodata value
+    dem2coreg[np.isnan(dem2coreg)] = nodata2
+
     #Save to output file
     #dtype = master_dem.ds.GetRasterBand(1).DataType
-    raster.simple_write_geotiff(args.outfile, dem2coreg, gt, wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
+    raster.simple_write_geotiff(args.outfile, dem2coreg, gt, wkt=master_dem.srs.ExportToWkt(),dtype=gdal.GDT_Float32,nodata_value=nodata2)
 
 
 def read_icesat_elev(is_files,RoI):
@@ -458,7 +487,7 @@ def read_icesat_elev(is_files,RoI):
     import h5py
 
     ## Read Icesat data
-    print "read Icesat data"
+    print("read Icesat data")
     filelist = glob(is_files)
     filelist.sort()
 
@@ -467,7 +496,7 @@ def read_icesat_elev(is_files,RoI):
     all_elev = []
 
     for f in filelist:
-        #print f
+        #print(f)
         ds=h5py.File(f,'r')
         lons = np.array(ds['Data_40HZ/Geolocation/d_lon'])
         lats = np.array(ds['Data_40HZ/Geolocation/d_lat'])
@@ -516,7 +545,7 @@ def coreg_with_IceSAT(args):
     ## mask points ##
     mask = raster.SingleBandRaster(args.maskfile)
     if dem2coreg.r.shape!=mask.r.shape:
-          print "Reproject mask"
+          print("Reproject mask")
           mask = mask.reproject(dem2coreg.srs, dem2coreg.nx, dem2coreg.ny, dem2coreg.extent[0], dem2coreg.extent[3], dem2coreg.xres, dem2coreg.yres, dtype=6, nodata=nodata, interp_type=1,progress=True)
 
     dem2coreg.r[mask.r>0] = np.nan
@@ -539,7 +568,7 @@ def coreg_with_IceSAT(args):
         pl.show()
 
     ## compute slave DEM slope at Icesat points ##
-    print "Compute slope and aspect"
+    print("Compute slope and aspect")
     g2, g1 = np.gradient(dem2coreg.r)
     distx = np.abs(dem2coreg.xres)
     disty = np.abs(dem2coreg.yres)
@@ -563,24 +592,24 @@ def coreg_with_IceSAT(args):
     ## Print out some statistics
     median = np.median(dh[np.isfinite(dh)])
     NMAD_old = 1.4826*np.median(np.abs(dh[np.isfinite(dh)]-median))
-    print "Statistics on initial dh"
-    print "Median : %f, NMAD : %f" %(median,NMAD_old)
+    print("Statistics on initial dh")
+    print("Median : %f, NMAD : %f" %(median,NMAD_old))
 
 
 
     ## Iterations to estimate DEMs shift
-    print "Iteratively estimate DEMs shift"
+    print("Iteratively estimate DEMs shift")
 
     slave_elev=dem2coreg.interp(all_lons,all_lats,latlon=True)
     dh = all_elev - slave_elev
     dh[slave_elev==0] = np.nan
     xoff, yoff = 0,0 
 
-    for i in xrange(args.niter):
+    for i in range(args.niter):
 	
         # compute aspect/dh relationship
         east, north, c = horizontal_shift(dh,slope_at_IS,aspect_at_IS,plot=args.plot, min_count=args.min_count)
-        print "#%i - Offset in pixels : (%f,%f)" %(i+1,east,north)
+        print("#%i - Offset in pixels : (%f,%f)" %(i+1,east,north))
         xoff+=east
         yoff+=north
 
@@ -593,10 +622,10 @@ def coreg_with_IceSAT(args):
         median = np.median(dh[np.isfinite(dh)])
         NMAD_new = 1.4826*np.median(np.abs(dh[np.isfinite(dh)]-median))
 
-        print "Median : %.2f, NMAD = %.2f, Gain : %.2f%%" %(median,NMAD_new,(NMAD_new-NMAD_old)/NMAD_old*100)
+        print("Median : %.2f, NMAD = %.2f, Gain : %.2f%%" %(median,NMAD_new,(NMAD_new-NMAD_old)/NMAD_old*100))
         NMAD_old = NMAD_new
 
-    print "Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff)
+    print("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
 
     if args.save==True:
       fname, ext = os.path.splitext(args.outfile)
@@ -605,11 +634,11 @@ def coreg_with_IceSAT(args):
       f.write("Final Offset in pixels (east, north) : (%f,%f)" %(xoff,yoff))
       f.write("Final NMAD : %f" %NMAD_new)
       f.close()
-      print "Offset saved in %s" %fname
+      print("Offset saved in %s" %fname)
       
 
     ### Deramping ###
-    print "Deramping"
+    print("Deramping")
     
     # remove points above altitude threshold (snow covered areas)
     #if args.zmax!='none':
@@ -645,7 +674,7 @@ def coreg_with_IceSAT(args):
           f.write("Median after deramping : (%f)" %(median))
           f.write("NMAD after deramping : %f" %NMAD_new)
           f.close()
-          print "Post-deramping stats saved in %s" %fname
+          print("Post-deramping stats saved in %s" %fname)
         
     # save to output file
     if args.save==True:
@@ -654,7 +683,7 @@ def coreg_with_IceSAT(args):
       #fname = WD+'/ramp.out'
       raster.simple_write_geotiff(fname, ramp(X,Y), dem2coreg.ds.GetGeoTransform(), wkt=dem2coreg.srs.ExportToWkt(),dtype=gdal.GDT_Float32)
       #ramp(X,Y).tofile(fname)
-      print "Ramp saved in %s" %fname
+      print("Ramp saved in %s" %fname)
       
     if args.plot==True:
         pl.figure('ramp')
@@ -673,7 +702,7 @@ def coreg_with_IceSAT(args):
     
     ### Interpolate the slave DEM to the new grid ###
 
-    print "Interpolate DEM to new grid"
+    print("Interpolate DEM to new grid")
 
     # fill NaN values for interpolation
     nanval = np.isnan(dem2coreg_save)
@@ -717,15 +746,16 @@ if __name__=='__main__':
     parser.add_argument('-plot', dest='plot', help='Plot processing steps and final results',action='store_true')
     parser.add_argument('-m', dest='maskfile', type=str, default='none', help='str, path to a mask of same size as the master DEM, to filter out non stable areas such as glaciers. Points with mask>0 are masked.  (default is none)')
     parser.add_argument('-shp', dest='shp', type=str, default='none', help='str, path to a shapefile containing outlines of objects to mask, such as RGI shapefiles (default is none)')
+    parser.add_argument('-buffer', dest='buffer', default=0, type=float, help='float, if set to >0, an additional buffer is added around the outlines. Size is in raster units. (Default is 0)')
     parser.add_argument('-n1', dest='nodata1', type=str, default='none', help='int, no data value for master DEM if not specified in the raster file (default read in the raster file)')
     parser.add_argument('-n2', dest='nodata2', type=str, default='none', help='int, no data value for slave DEM if not specified in the raster file (default read in the raster file)')
     parser.add_argument('-min_count', dest='min_count', type=int, default=30, help='int, minimum number of points in each aspect bin to be considered valid (default is 30)')
     parser.add_argument('-zmax', dest='zmax', type=str, default='none', help='float, points with altitude above zmax are masked during the vertical alignment, e.g snow covered areas (default none)')
     parser.add_argument('-zmin', dest='zmin', type=str, default='none', help='float, points with altitude below zmin are masked during the vertical alignment, e.g points on sea (default none)')
     parser.add_argument('-resmax', dest='resmax', type=str, default='none', help='float, maximum value of the residuals, points where |dh|>resmax are considered as outliers and removed (default none)')
-    parser.add_argument('-deg', dest='degree', type=int, default=1, help='int, degree of the polynomial to be fit to residuals and removed (default is 1=tilt)')
-    parser.add_argument('-grid', dest='grid', type=str, default='master', help="'master' or 'slave' : common grid to use for the DEMs (default is master DEM grid)")
-    parser.add_argument('-save', dest='save', help='Save horizontal offset as a text file and ramp as a GTiff file',action='store_true')
+    parser.add_argument('-deg', dest='degree', type=int, default=1, help='int, degree of the polynomial to be fit to residuals and removed. Set to <0 to disable. (default is 1=tilt)')
+    parser.add_argument('-grid', dest='grid', type=str, default='master', help="'master' or 'slave' : only the intersection of both DEMs is extracted, either in the grid of the master DEM, or the slave (default is master DEM grid).")
+    parser.add_argument('-save', dest='save', help='Save horizontal and median vertical offset in a text file',action='store_true')
     parser.add_argument('-IS', dest='IS', help='Master DEM are IceSAT data instead of a raster DEM. master_dem must then be a string to the file name or regular expression to several files (use quotes)',action='store_true')
 
 

@@ -52,8 +52,8 @@ from scipy.ndimage.filters import gaussian_filter
 from matplotlib.colors import LightSource
 
 from georaster import __Raster
-import geometry as geo
-import EGM96
+import geoutils.geometry as geo
+from geoutils import EGM96
 
 # By default, GDAL does not raise exceptions - enable them
 # See http://trac.osgeo.org/gdal/wiki/PythonGotchas
@@ -115,7 +115,7 @@ class DEMRaster(__Raster):
             return
 
         else:
-            print 'Warning : load_data argument not understood. No data loaded.'
+            print('Warning : load_data argument not understood. No data loaded.')
 
         # Convert to float32 for future computations
         self.r = np.float32(self.r)
@@ -381,7 +381,7 @@ def gaussian_kernel(sigmax,sigmay,alpha,fmin=0.01):
     size=np.ceil(max(sigmax,sigmay)*3)
     size=int(size//2*2+1)  # make it an odd number
     #if size%2!=1:
-    #    print "size must be an odd number"
+    #    print("size must be an odd number")
     #    return 0
 
     # create meshgrid

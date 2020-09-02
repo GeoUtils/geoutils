@@ -33,8 +33,7 @@ def geodiff(im1,im2,imout,inverse=False,resampling=1):
 
     # Read first image
     img1 = geor.SingleBandRaster(im1, load_data=False)
-    xmin, xmax, ymin, ymax = img1.intersection(im2)
-    #xmin, xmax, ymin, ymax = img1.extent
+    overlap = img1.intersection(im2)
     nodata1 = img1.ds.GetRasterBand(1).GetNoDataValue()
     
     # Load second image
@@ -42,9 +41,12 @@ def geodiff(im1,im2,imout,inverse=False,resampling=1):
     dtype2 = img2.ds.GetRasterBand(1).DataType
     nodata2 = img2.ds.GetRasterBand(1).GetNoDataValue()
 
-    # Read first image
-    img1 = geor.SingleBandRaster(im1, load_data=(xmin,xmax,ymin,ymax),latlon=False)
-    
+    # Read first image in overlap area
+    img1 = geor.SingleBandRaster(im1, load_data=overlap,latlon=False)
+    xmin, xmax, ymin, ymax = img1.extent
+    gt = img1.ds.GetGeoTransform()
+    new_gt = (xmin, gt[1], gt[2], ymax, gt[4], gt[5])
+
     # Reproject img2 if needed
     if ((img1.nx != img2.nx) or (img1.ny != img2.ny)):
         img2_proj = img2.reproject(img1.srs, nx=img1.nx, ny=img1.ny, xmin=xmin, ymax=ymax, xres=img1.xres, yres=img1.yres, dtype=dtype2, nodata=nodata2, interp_type=resampling, progress=True)
@@ -64,7 +66,7 @@ def geodiff(im1,im2,imout,inverse=False,resampling=1):
     diff[img2_proj.r==nodata2] = out_nodata
     
     # Save to GTiff
-    return geor.simple_write_geotiff(imout, diff, img1.ds.GetGeoTransform(), wkt=img1.srs.ExportToWkt(), dtype=6, nodata_value=out_nodata, options=None)
+    return geor.simple_write_geotiff(imout, diff, new_gt, wkt=img1.srs.ExportToWkt(), dtype=6, nodata_value=out_nodata, options=None)
 
     
 if __name__=='__main__':

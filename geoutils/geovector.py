@@ -481,10 +481,12 @@ class SingleLayerVector:
         ax.set_ylim(ymin,ymax)
 
 
-    def crop(self,xmin,xmax,ymin,ymax,latlon=False):
+    def crop(self,xmin,xmax,ymin,ymax,latlon=False,clip=False):
         """
         Filter all features that are outside the rectangle defined by the corners xmin, xmax, ymin, ymax.
         Coordinates are in the same Reference System as the vector file.
+        If latlon=True, the coordinates are considered as WGS84.
+        If clip=True, the features are clipped to the extent.
         """
 
         # convert latlon coordinates to local coordinates
@@ -514,12 +516,35 @@ class SingleLayerVector:
         #other method
 #        wkt = "POLYGON ((%f %f, %f %f, %f %f, %f %f, %f %f))" %(xmin,ymin,xmin,ymax,xmax,ymax,xmax,ymin,xmin,ymin)
 #        poly=ogr.CreateGeometryFromWkt(wkt)
+
+        if clip==True:
+
+            # Create the "method layer" to which the input layer will be clipped
+            mem_driver = ogr.GetDriverByName('memory')
+            polyDS = mem_driver.CreateDataSource('')
+            polyLayer = polyDS.CreateLayer('poly',self.srs,ogr.wkbPolygon)
+
+            # Add polygon to it
+            polyFeature = ogr.Feature(polyLayer.GetLayerDefn())
+            polyFeature.SetGeometry(poly)
+            polyLayer.CreateFeature(polyFeature)
+            polyFeature.Destroy()
+
+            # Create output layer
+            outDS = mem_driver.CreateDataSource('')
+            clipped_layer = outDS.CreateLayer('clipped',self.srs,self.layer.GetGeomType())
+
+            # Clip layer and save
+            self.layer.Clip(polyLayer,clipped_layer)
+            self._load_ds(outDS)
+            
+        else:
+            
+            #Filter features outside the polygon
+            self.layer.SetSpatialFilter(poly)
         
-        #Filter features outside the polygon
-        self.layer.SetSpatialFilter(poly)
-        
-        #update attributes
-        self.extent = poly.GetEnvelope()
+            #update attributes
+            self.extent = poly.GetEnvelope()
     
 
     def crop2raster(self,rs):

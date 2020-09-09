@@ -304,7 +304,7 @@ def coreg_with_master_dem(args):
       if args.buffer>0:
         xres = float(master_dem.xres)
         buf_size_pix = int(args.buffer/xres)
-        mask = binary_dilation(mask,np.ones((3,3)),iterations=buf_size_pix/2)
+        mask = binary_dilation(mask,np.ones((3,3)),iterations=buf_size_pix//2)
 
       master_dem.r[mask>0] = np.nan
         
@@ -331,7 +331,7 @@ def coreg_with_master_dem(args):
     ## Display
     if args.plot==True:
       maxval = 3*NMAD_old #np.percentile(np.abs(diff_before[np.isfinite(diff_before)]),90)
-      pl.imshow(diff_before,vmin=-maxval,vmax=maxval,cmap='RdYlBu')
+      pl.imshow(diff_before,vmin=-maxval+median,vmax=maxval+median,cmap='RdYlBu')
       cb=pl.colorbar()
       cb.set_label('Elevation difference (m)')
       pl.show()

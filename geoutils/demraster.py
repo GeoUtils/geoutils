@@ -46,7 +46,6 @@ from osgeo import osr, gdal
 import subprocess
 import xml.etree.ElementTree as etree
 import re
-import mpl_toolkits.basemap.proj as pyproj
 import matplotlib.pyplot as pl
 from scipy.ndimage.filters import gaussian_filter
 from matplotlib.colors import LightSource

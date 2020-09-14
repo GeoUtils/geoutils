@@ -7,6 +7,7 @@ import matplotlib.pyplot as pl
 import numpy as np
 import numbers
 from copy import deepcopy
+import warnings
 try:
     import pyproj
 except ImportError:
@@ -369,7 +370,15 @@ class SingleLayerVector:
             geom.AssignSpatialReference(target_srs)
         
             for i in range(0, outLayerDefn.GetFieldCount()):
-                outFeature.SetField(outLayerDefn.GetFieldDefn(i).GetNameRef(), inFeature.GetField(i))
+                try:
+                    outFeature.SetField(outLayerDefn.GetFieldDefn(i).GetNameRef(), inFeature.GetField(i))
+                except RuntimeError:
+                    # This error can happen with non UTF-8 characters
+                    # Only solution found so far - Force conversion to UTF-8, replacing with ? if not utf-8 (see https://docs.python.org/3/howto/unicode.html)
+                    value = str(inFeature.GetField(i).encode('utf-8',"replace"))
+                    warnings.warn("Replacing non utf-8 character with %s" %value)
+                    outFeature.SetField(outLayerDefn.GetFieldDefn(i).GetNameRef(), str(value))
+
             # add the feature to the shapefile
             outLayer.CreateFeature(outFeature)
             # destroy the features and get the next input feature

@@ -16,5 +16,5 @@ setup(name='geoutils',
     #long_description=open('README.md').read(),
     #install_requires=['gdal','numpy','scipy','matplotlib'],
     #Note: this will write to /usr/local/bin
-    scripts=['geoutils/crop2common.py','geoutils/crop2image.py','geoutils/dem_coregistration.py','geoutils/gdalcopyproj.py','geoutils/plot_geo_image.py'])
+    scripts=['geoutils/crop2common.py','geoutils/crop2image.py','geoutils/dem_coregistration.py','geoutils/plot_geo_image.py'])
 
